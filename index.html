@@ -4,16 +4,22 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Survivor 50 Fantasy Draft</title>
-  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <!-- FIX 1: Switched from unpkg to jsDelivr for React/ReactDOM — more reliable on Netlify -->
+  <script crossorigin src="https://cdn.jsdelivr.net/npm/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://cdn.jsdelivr.net/npm/react-dom@18/umd/react-dom.production.min.js"></script>
+  <!-- FIX 2: Babel standalone from jsDelivr -->
+  <script src="https://cdn.jsdelivr.net/npm/@babel/standalone@7.23.5/babel.min.js"></script>
+  <!-- Tailwind -->
   <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://unpkg.com/lucide@latest"></script>
-  
-  <!-- Firebase SDK -->
+
+  <!-- FIX 3: Lucide — use the correct UMD bundle that exposes window.lucide properly -->
+  <script src="https://cdn.jsdelivr.net/npm/lucide@0.263.1/dist/umd/lucide.min.js"></script>
+
+  <!-- Firebase SDK (compat) -->
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
-  
+
   <style>
     @keyframes spin-wheel {
       from { transform: rotate(0deg); }
@@ -21,6 +27,7 @@
     }
     .spinning {
       animation: spin-wheel 3s cubic-bezier(0.17, 0.67, 0.35, 0.96) forwards;
+      display: inline-block;
     }
   </style>
 </head>
@@ -28,36 +35,80 @@
   <div id="root"></div>
 
   <script>
-    // Firebase Configuration - REPLACE WITH YOUR OWN CONFIG
-    // To get your config: https://console.firebase.google.com/
-    // 1. Create a new project
-    // 2. Add a web app
-    // 3. Copy the config object here
-   // For Firebase JS SDK v7.20.0 and later, measurementId is optional
-const firebaseConfig = {
-  apiKey: "AIzaSyAqjvPwe4DaLNPNQYAIYOpCUrOZNdf7kC8",
-  authDomain: "surviving-the-leifeld.firebaseapp.com",
-  projectId: "surviving-the-leifeld",
-  storageBucket: "surviving-the-leifeld.firebasestorage.app",
-  messagingSenderId: "370494353013",
-  appId: "1:370494353013:web:abed60693421e0cef7923c",
-  measurementId: "G-3D54WLTFHK"
-};
+    // Firebase Configuration
+    const firebaseConfig = {
+      apiKey: "AIzaSyAqjvPwe4DaLNPNQYAIYOpCUrOZNdf7kC8",
+      authDomain: "surviving-the-leifeld.firebaseapp.com",
+      projectId: "surviving-the-leifeld",
+      storageBucket: "surviving-the-leifeld.firebasestorage.app",
+      messagingSenderId: "370494353013",
+      appId: "1:370494353013:web:abed60693421e0cef7923c",
+      measurementId: "G-3D54WLTFHK"
+    };
 
-    // Initialize Firebase
-    let database;
+    // Initialize Firebase and expose on window so React component can access it
     try {
       firebase.initializeApp(firebaseConfig);
-      database = firebase.database();
+      // FIX 4: Expose database on window so the firebaseReady check works
+      window._firebaseDB = firebase.database();
       console.log('Firebase initialized successfully');
     } catch (error) {
       console.error('Firebase initialization error:', error);
+      window._firebaseDB = null;
     }
+
+    // FIX 5: Create React icon components from Lucide UMD bundle
+    // The lucide UMD bundle exposes createIcons() but NOT React components directly.
+    // We need to build thin React wrappers using lucide-react's SVG data.
+    // Simplest fix: inline SVG icon components for the ones we need.
+    window._Icons = {};
+    (function() {
+      const R = window.React;
+      function makeIcon(svgPath, displayName) {
+        const Comp = function(props) {
+          const { className = '', style = {}, ...rest } = props || {};
+          return R.createElement('svg', {
+            xmlns: 'http://www.w3.org/2000/svg',
+            width: props.size || props.width || 24,
+            height: props.size || props.height || 24,
+            viewBox: '0 0 24 24',
+            fill: 'none',
+            stroke: 'currentColor',
+            strokeWidth: 2,
+            strokeLinecap: 'round',
+            strokeLinejoin: 'round',
+            className,
+            style,
+            dangerouslySetInnerHTML: { __html: svgPath }
+          });
+        };
+        Comp.displayName = displayName;
+        return Comp;
+      }
+
+      window._Icons.Trophy   = makeIcon('<path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/>', 'Trophy');
+
+      window._Icons.Users    = makeIcon('<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>', 'Users');
+
+      window._Icons.Target   = makeIcon('<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/>', 'Target');
+
+      window._Icons.Award    = makeIcon('<circle cx="12" cy="8" r="6"/><path d="M15.477 12.89 17 22l-5-3-5 3 1.523-9.11"/>', 'Award');
+
+      window._Icons.Flame    = makeIcon('<path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/>', 'Flame');
+
+      window._Icons.Clock    = makeIcon('<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>', 'Clock');
+
+      window._Icons.Eye      = makeIcon('<path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/>', 'Eye');
+
+      window._Icons.EyeOff   = makeIcon('<path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"/><path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"/><line x1="2" x2="22" y1="2" y2="22"/>', 'EyeOff');
+    })();
   </script>
 
   <script type="text/babel">
     const { useState, useEffect } = React;
-    const { Trophy, Users, Target, Award, Flame, Eye, EyeOff, Clock } = lucide;
+
+    // FIX 6: Pull icons from our pre-built window._Icons instead of destructuring lucide
+    const { Trophy, Users, Target, Award, Flame, Eye, EyeOff, Clock } = window._Icons;
 
     // Survivor 50 Cast - 24 Legendary Contestants
     const CONTESTANTS = [
@@ -102,7 +153,6 @@ const firebaseConfig = {
       const [teams, setTeams] = useState({});
       const [exileTribe, setExileTribe] = useState([]);
       const [exileSelections, setExileSelections] = useState({});
-      const [draggedContestant, setDraggedContestant] = useState(null);
       const [puzzleGrid, setPuzzleGrid] = useState([]);
       const [solvedGrid] = useState([[1, 2, 3], [4, 5, 6], [7, 8, null]]);
       const [puzzleStartTime, setPuzzleStartTime] = useState(null);
@@ -111,12 +161,12 @@ const firebaseConfig = {
       const [dataLoaded, setDataLoaded] = useState(false);
       const [firebaseReady, setFirebaseReady] = useState(false);
 
-      // Check if Firebase is configured
+      // FIX 7: Check window._firebaseDB (which we set above) instead of window.database
       useEffect(() => {
-        if (window.firebase && window.database) {
+        if (window.firebase && window._firebaseDB) {
           setFirebaseReady(true);
         } else {
-          console.error('Firebase not initialized');
+          console.warn('Firebase not available — running in local-only mode');
           setDataLoaded(true);
         }
       }, []);
@@ -125,8 +175,8 @@ const firebaseConfig = {
       useEffect(() => {
         if (!firebaseReady) return;
 
-        const draftRef = firebase.database().ref('draft');
-        
+        const draftRef = window._firebaseDB.ref('draft');
+
         draftRef.on('value', (snapshot) => {
           const data = snapshot.val();
           if (data) {
@@ -146,20 +196,16 @@ const firebaseConfig = {
         return () => draftRef.off();
       }, [firebaseReady]);
 
-      // Save state to Firebase whenever it changes
+      // Save state to Firebase
       const saveToFirebase = (updates) => {
-        if (!firebaseReady) return;
-        
-        const draftRef = firebase.database().ref('draft');
-        draftRef.update(updates).catch(error => {
+        if (!firebaseReady || !window._firebaseDB) return;
+        window._firebaseDB.ref('draft').update(updates).catch(error => {
           console.error('Error saving to Firebase:', error);
         });
       };
 
       useEffect(() => {
-        if (dataLoaded && firebaseReady) {
-          saveToFirebase({ phase });
-        }
+        if (dataLoaded && firebaseReady) saveToFirebase({ phase });
       }, [phase]);
 
       useEffect(() => {
@@ -171,23 +217,23 @@ const firebaseConfig = {
       const generatePuzzle = () => {
         let grid = solvedGrid.map(row => [...row]);
         let emptyRow = 2, emptyCol = 2;
-        
+
         for (let i = 0; i < 50; i++) {
           const moves = [];
           if (emptyRow > 0) moves.push([-1, 0]);
           if (emptyRow < 2) moves.push([1, 0]);
           if (emptyCol > 0) moves.push([0, -1]);
           if (emptyCol < 2) moves.push([0, 1]);
-          
+
           const [dr, dc] = moves[Math.floor(Math.random() * moves.length)];
           const newRow = emptyRow + dr;
           const newCol = emptyCol + dc;
-          
+
           [grid[emptyRow][emptyCol], grid[newRow][newCol]] = [grid[newRow][newCol], grid[emptyRow][emptyCol]];
           emptyRow = newRow;
           emptyCol = newCol;
         }
-        
+
         setPuzzleGrid(grid);
       };
 
@@ -201,6 +247,7 @@ const firebaseConfig = {
       }, [puzzleStartTime, phase]);
 
       const formatTime = (seconds) => {
+        if (!seconds && seconds !== 0) return '--:--';
         if (seconds >= 999999) return "DNF";
         const mins = Math.floor(seconds / 60);
         const secs = seconds % 60;
@@ -219,13 +266,13 @@ const firebaseConfig = {
       const handleRankingChange = (contestant, rank) => {
         const playerRankings = rankings[selectedPlayer] || {};
         const updatedRankings = { ...playerRankings };
-        
+
         Object.keys(updatedRankings).forEach(key => {
           if (updatedRankings[key] === contestant.name) {
             delete updatedRankings[key];
           }
         });
-        
+
         updatedRankings[rank] = contestant.name;
         setRankings({ ...rankings, [selectedPlayer]: updatedRankings });
       };
@@ -236,7 +283,7 @@ const firebaseConfig = {
           alert('Please rank all 24 contestants!');
           return;
         }
-        
+
         setPhase('challenge');
         generatePuzzle();
         setPuzzleStartTime(Date.now());
@@ -245,7 +292,7 @@ const firebaseConfig = {
 
       const moveTile = (row, col) => {
         const newGrid = puzzleGrid.map(r => [...r]);
-        
+
         let emptyRow, emptyCol;
         for (let i = 0; i < 3; i++) {
           for (let j = 0; j < 3; j++) {
@@ -255,15 +302,15 @@ const firebaseConfig = {
             }
           }
         }
-        
-        const isAdjacent = 
+
+        const isAdjacent =
           (row === emptyRow && Math.abs(col - emptyCol) === 1) ||
           (col === emptyCol && Math.abs(row - emptyRow) === 1);
-        
+
         if (isAdjacent) {
           [newGrid[row][col], newGrid[emptyRow][emptyCol]] = [newGrid[emptyRow][emptyCol], newGrid[row][col]];
           setPuzzleGrid(newGrid);
-          
+
           if (JSON.stringify(newGrid) === JSON.stringify(solvedGrid)) {
             completePuzzle();
           }
@@ -274,22 +321,22 @@ const firebaseConfig = {
         const timeSeconds = Math.floor((Date.now() - puzzleStartTime) / 1000);
         const newTimes = { ...challengeTimes, [selectedPlayer]: timeSeconds };
         setChallengeTimes(newTimes);
-        
+
         const newCompleted = [...completedPlayers, selectedPlayer];
         setCompletedPlayers(newCompleted);
-        
+
         setPhase('riskDecision');
       };
 
       const skipPuzzle = () => {
         if (!window.confirm('Are you sure you want to skip the puzzle? You will receive a DNF time.')) return;
-        
+
         const newTimes = { ...challengeTimes, [selectedPlayer]: 999999 };
         setChallengeTimes(newTimes);
-        
+
         const newCompleted = [...completedPlayers, selectedPlayer];
         setCompletedPlayers(newCompleted);
-        
+
         setPhase('riskDecision');
       };
 
@@ -297,16 +344,16 @@ const firebaseConfig = {
         if (takeRisk) {
           setPhase('spinning');
           setIsSpinning(true);
-          
+
           setTimeout(() => {
             const result = Math.random() < 0.5 ? 'reward' : 'penalty';
             setSpinResult(result);
             setIsSpinning(false);
-            
+
             setTimeout(() => {
               const newRewards = { ...riskRewards, [selectedPlayer]: result };
               setRiskRewards(newRewards);
-              
+
               if (result === 'reward') {
                 setPhase('rewardSwap');
               } else {
@@ -323,7 +370,7 @@ const firebaseConfig = {
         if (doSwap) {
           const otherPlayers = PLAYER_NAMES.filter(p => p !== selectedPlayer);
           const playerToSwap = prompt(`Enter the name of the player you want to swap times with:\n${otherPlayers.join(', ')}`);
-          
+
           if (playerToSwap && otherPlayers.includes(playerToSwap.toUpperCase())) {
             const tempTime = challengeTimes[selectedPlayer];
             const newTimes = {
@@ -346,34 +393,35 @@ const firebaseConfig = {
           const timeB = challengeTimes[b] || 999999;
           return timeA - timeB;
         });
-        
+
         const penaltyPlayers = Object.keys(riskRewards).filter(p => riskRewards[p] === 'penalty');
         const finalOrder = sortedPlayers.filter(p => !penaltyPlayers.includes(p)).concat(penaltyPlayers);
-        
+
         setDraftOrder(finalOrder);
-        
+
         const initialTeams = {};
         PLAYER_NAMES.forEach(player => {
           initialTeams[player] = [];
         });
         setTeams(initialTeams);
-        
+
         setPhase('draft');
       };
 
       const handleDraft = (player, contestant) => {
         const newTeams = { ...teams };
-        
-        if (newTeams[player].includes(contestant)) {
+
+        if (newTeams[player] && newTeams[player].includes(contestant)) {
           newTeams[player] = newTeams[player].filter(c => c !== contestant);
         } else {
+          if (!newTeams[player]) newTeams[player] = [];
           if (newTeams[player].length >= 4) {
             alert(`${player} already has 4 contestants!`);
             return;
           }
           newTeams[player] = [...newTeams[player], contestant];
         }
-        
+
         setTeams(newTeams);
       };
 
@@ -384,18 +432,18 @@ const firebaseConfig = {
             return;
           }
         }
-        
+
         const allDrafted = Object.values(teams).flat();
         const exiled = CONTESTANTS.map(c => c.name).filter(c => !allDrafted.includes(c));
         setExileTribe(exiled);
-        
+
         setPhase('exileSelect');
       };
 
       const submitExileSelection = (tribeIndex) => {
         const newSelections = { ...exileSelections, [selectedPlayer]: tribeIndex };
         setExileSelections(newSelections);
-        
+
         if (Object.keys(newSelections).length === PLAYER_NAMES.length) {
           setPhase('complete');
         } else {
@@ -408,15 +456,15 @@ const firebaseConfig = {
           alert('Incorrect proctor code!');
           return;
         }
-        
+
         if (!window.confirm('Are you sure you want to reset the entire draft? This cannot be undone.')) {
           return;
         }
 
-        if (firebaseReady) {
-          firebase.database().ref('draft').remove();
+        if (firebaseReady && window._firebaseDB) {
+          window._firebaseDB.ref('draft').remove();
         }
-        
+
         setPhase('playerSelect');
         setSelectedPlayer(null);
         setRankings({});
@@ -430,14 +478,11 @@ const firebaseConfig = {
         setProctorCode('');
       };
 
-      const downloadRankingsAsPDF = () => {
-        alert('PDF download would require a server-side library. For now, you can screenshot or print this page!');
-      };
+      // ─── RENDER FUNCTIONS ────────────────────────────────────────────────────
 
-      // RENDER FUNCTIONS
       const renderPlayerSelect = () => {
         const availablePlayers = PLAYER_NAMES.filter(p => !completedPlayers.includes(p));
-        
+
         if (availablePlayers.length === 0) {
           return (
             <div className="max-w-4xl mx-auto text-center">
@@ -468,10 +513,9 @@ const firebaseConfig = {
 
             {!firebaseReady && (
               <div className="bg-yellow-100 border-4 border-yellow-400 p-6 rounded-lg mb-6">
-                <p className="text-yellow-900 font-bold text-lg mb-2">⚠️ Firebase Not Configured</p>
+                <p className="text-yellow-900 font-bold text-lg mb-2">⚠️ Firebase Not Connected</p>
                 <p className="text-yellow-800">
-                  To enable real-time syncing, you need to set up Firebase. See the README for instructions.
-                  For now, data will only save locally in your browser.
+                  Data will not sync between devices. Check your Firebase config and Realtime Database rules.
                 </p>
               </div>
             )}
@@ -513,8 +557,7 @@ const firebaseConfig = {
 
       const renderRanking = () => {
         const playerRankings = rankings[selectedPlayer] || {};
-        const rankedContestants = Object.values(playerRankings);
-        
+
         return (
           <div className="max-w-6xl mx-auto">
             <div className="bg-white p-6 rounded-lg shadow-xl mb-6 border-4 border-orange-600">
@@ -532,14 +575,12 @@ const firebaseConfig = {
                 const currentRank = Object.keys(playerRankings).find(
                   rank => playerRankings[rank] === contestant.name
                 );
-                
+
                 return (
                   <div
                     key={contestant.name}
-                    className={`p-4 rounded-lg border-3 ${
-                      currentRank
-                        ? 'bg-orange-100 border-orange-500'
-                        : 'bg-white border-gray-300'
+                    className={`p-4 rounded-lg border-2 ${
+                      currentRank ? 'bg-orange-100 border-orange-500' : 'bg-white border-gray-300'
                     }`}
                   >
                     <h3 className="font-bold text-lg text-gray-900 mb-1">{contestant.name}</h3>
@@ -551,8 +592,8 @@ const firebaseConfig = {
                     >
                       <option value="">Select rank...</option>
                       {Array.from({ length: 24 }, (_, i) => i + 1).map(rank => (
-                        <option 
-                          key={rank} 
+                        <option
+                          key={rank}
                           value={rank}
                           disabled={playerRankings[rank] && playerRankings[rank] !== contestant.name}
                         >
@@ -577,242 +618,224 @@ const firebaseConfig = {
         );
       };
 
-      const renderChallenge = () => {
-        return (
-          <div className="max-w-2xl mx-auto">
-            <div className="bg-white p-8 rounded-lg shadow-2xl border-4 border-blue-600 mb-6">
-              <h2 className="text-3xl font-bold text-gray-900 mb-4 flex items-center justify-center gap-3">
-                <Target className="w-10 h-10 text-blue-600" />
-                Immunity Challenge: Sliding Puzzle
-              </h2>
-              <p className="text-lg text-gray-700 mb-2 text-center">
-                Solve the 3x3 sliding puzzle as fast as you can!
-              </p>
-              <div className="text-2xl font-bold text-blue-600 text-center mb-6">
-                <Clock className="w-6 h-6 inline mr-2" />
-                Time: {formatTime(elapsedTime)}
+      const renderChallenge = () => (
+        <div className="max-w-2xl mx-auto">
+          <div className="bg-white p-8 rounded-lg shadow-2xl border-4 border-blue-600 mb-6">
+            <h2 className="text-3xl font-bold text-gray-900 mb-4 flex items-center justify-center gap-3">
+              <Target className="w-10 h-10 text-blue-600" />
+              Immunity Challenge: Sliding Puzzle
+            </h2>
+            <p className="text-lg text-gray-700 mb-2 text-center">
+              Solve the 3×3 sliding puzzle as fast as you can!
+            </p>
+            <div className="text-2xl font-bold text-blue-600 text-center mb-6">
+              <Clock className="w-6 h-6 inline mr-2" />
+              Time: {formatTime(elapsedTime)}
+            </div>
+          </div>
+
+          <div className="bg-white p-8 rounded-lg shadow-xl border-4 border-orange-400 mb-6">
+            <div className="grid grid-cols-3 gap-2 max-w-md mx-auto">
+              {puzzleGrid.map((row, rowIdx) =>
+                row.map((tile, colIdx) => (
+                  <button
+                    key={`${rowIdx}-${colIdx}`}
+                    onClick={() => moveTile(rowIdx, colIdx)}
+                    className={`aspect-square text-4xl font-bold rounded-lg transition ${
+                      tile === null
+                        ? 'bg-gray-200 cursor-default'
+                        : 'bg-gradient-to-br from-orange-400 to-red-500 text-white hover:from-orange-500 hover:to-red-600 shadow-lg border-4 border-orange-600'
+                    }`}
+                  >
+                    {tile}
+                  </button>
+                ))
+              )}
+            </div>
+          </div>
+
+          <div className="text-center">
+            <button
+              onClick={skipPuzzle}
+              className="bg-gray-600 text-white px-6 py-3 rounded-lg font-bold hover:bg-gray-700 transition"
+            >
+              Skip Puzzle (DNF)
+            </button>
+          </div>
+        </div>
+      );
+
+      const renderRiskDecision = () => (
+        <div className="max-w-2xl mx-auto text-center">
+          <div className="bg-white p-8 rounded-lg shadow-2xl border-4 border-purple-600">
+            <Flame className="w-20 h-20 mx-auto mb-4 text-orange-500" />
+            <h2 className="text-3xl font-bold text-gray-900 mb-4">Risk vs. Reward</h2>
+            <p className="text-lg text-gray-700 mb-2">
+              Your time: <span className="font-bold text-purple-600">{formatTime(challengeTimes[selectedPlayer])}</span>
+            </p>
+            <p className="text-gray-700 mb-6">
+              Do you want to spin the wheel for a chance at a reward or penalty?
+            </p>
+            <div className="space-y-4">
+              <div className="bg-green-100 p-4 rounded-lg border-2 border-green-400">
+                <p className="font-bold text-green-800">🎁 REWARD: Swap times with another player</p>
+              </div>
+              <div className="bg-red-100 p-4 rounded-lg border-2 border-red-400">
+                <p className="font-bold text-red-800">⚠️ PENALTY: Draft last regardless of time</p>
+              </div>
+            </div>
+            <div className="mt-8 flex gap-4 justify-center">
+              <button
+                onClick={() => handleRiskDecision(true)}
+                className="bg-gradient-to-r from-purple-600 to-pink-600 text-white px-8 py-4 rounded-lg text-xl font-bold hover:from-purple-700 hover:to-pink-700 transition shadow-lg"
+              >
+                Spin the Wheel!
+              </button>
+              <button
+                onClick={() => handleRiskDecision(false)}
+                className="bg-gray-600 text-white px-8 py-4 rounded-lg text-xl font-bold hover:bg-gray-700 transition"
+              >
+                Play It Safe
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+
+      const renderSpinning = () => (
+        <div className="max-w-2xl mx-auto text-center">
+          <div className="bg-white p-8 rounded-lg shadow-2xl border-4 border-yellow-600">
+            <h2 className="text-3xl font-bold text-gray-900 mb-8">Spinning the Wheel...</h2>
+            <div className={`text-9xl mx-auto mb-8 ${isSpinning ? 'spinning' : ''}`}>
+              🎡
+            </div>
+            {!isSpinning && spinResult && (
+              <div className={`text-2xl font-bold p-6 rounded-lg ${
+                spinResult === 'reward'
+                  ? 'bg-green-100 text-green-800 border-4 border-green-400'
+                  : 'bg-red-100 text-red-800 border-4 border-red-400'
+              }`}>
+                {spinResult === 'reward' ? '🎁 REWARD!' : '⚠️ PENALTY!'}
+              </div>
+            )}
+          </div>
+        </div>
+      );
+
+      const renderRewardSwap = () => (
+        <div className="max-w-2xl mx-auto text-center">
+          <div className="bg-white p-8 rounded-lg shadow-2xl border-4 border-green-600">
+            <Award className="w-20 h-20 mx-auto mb-4 text-green-600" />
+            <h2 className="text-3xl font-bold text-gray-900 mb-4">You Won a Reward!</h2>
+            <p className="text-lg text-gray-700 mb-6">
+              You can swap your challenge time with any other player's time!
+            </p>
+            <div className="space-y-4">
+              <button
+                onClick={() => handleRewardSwap(true)}
+                className="w-full bg-gradient-to-r from-green-600 to-emerald-600 text-white px-8 py-4 rounded-lg text-xl font-bold hover:from-green-700 hover:to-emerald-700 transition shadow-lg"
+              >
+                Use Reward (Swap Times)
+              </button>
+              <button
+                onClick={() => handleRewardSwap(false)}
+                className="w-full bg-gray-600 text-white px-8 py-4 rounded-lg text-xl font-bold hover:bg-gray-700 transition"
+              >
+                Keep My Time
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+
+      const renderWaiting = () => (
+        <div className="max-w-2xl mx-auto text-center">
+          <div className="bg-white p-8 rounded-lg shadow-2xl border-4 border-blue-600">
+            <Clock className="w-20 h-20 mx-auto mb-4 text-blue-600" />
+            <h2 className="text-3xl font-bold text-gray-900 mb-4">Waiting for Other Players</h2>
+            <p className="text-lg text-gray-700 mb-6">
+              {selectedPlayer}, you're all done! Waiting for other players to complete.
+            </p>
+            <p className="text-gray-600 mb-4">
+              Completed: {completedPlayers.length} / {PLAYER_NAMES.length}
+            </p>
+            <button
+              onClick={() => setPhase('playerSelect')}
+              className="bg-gradient-to-r from-orange-500 to-red-600 text-white px-8 py-4 rounded-lg text-xl font-bold hover:from-orange-600 hover:to-red-700 transition shadow-lg"
+            >
+              Back to Player Select
+            </button>
+          </div>
+        </div>
+      );
+
+      const renderRankingsReview = () => (
+        <div className="max-w-7xl mx-auto">
+          <div className="bg-white p-6 rounded-lg shadow-xl mb-6 border-4 border-orange-600">
+            <h2 className="text-3xl font-bold text-gray-900 mb-4">Challenge Results & Rankings</h2>
+
+            <div className="mb-6">
+              <h3 className="text-2xl font-bold text-gray-800 mb-3">Challenge Times:</h3>
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                {PLAYER_NAMES.map(player => (
+                  <div key={player} className="bg-blue-100 p-4 rounded-lg border-2 border-blue-400 text-center">
+                    <p className="font-bold text-gray-900">{player}</p>
+                    <p className="text-2xl text-blue-600 font-bold">{formatTime(challengeTimes[player] || 0)}</p>
+                    {riskRewards[player] === 'penalty' && <p className="text-red-600 text-sm font-bold mt-1">⚠️ PENALTY</p>}
+                    {riskRewards[player] === 'reward'  && <p className="text-green-600 text-sm font-bold mt-1">🎁 REWARD</p>}
+                  </div>
+                ))}
               </div>
             </div>
 
-            <div className="bg-white p-8 rounded-lg shadow-xl border-4 border-orange-400 mb-6">
-              <div className="grid grid-cols-3 gap-2 max-w-md mx-auto">
-                {puzzleGrid.map((row, rowIdx) =>
-                  row.map((tile, colIdx) => (
-                    <button
-                      key={`${rowIdx}-${colIdx}`}
-                      onClick={() => moveTile(rowIdx, colIdx)}
-                      className={`aspect-square text-4xl font-bold rounded-lg transition ${
-                        tile === null
-                          ? 'bg-gray-200 cursor-default'
-                          : 'bg-gradient-to-br from-orange-400 to-red-500 text-white hover:from-orange-500 hover:to-red-600 shadow-lg border-4 border-orange-600'
-                      }`}
-                    >
-                      {tile}
-                    </button>
-                  ))
-                )}
-              </div>
+            <div className="overflow-x-auto mb-6">
+              <h3 className="text-2xl font-bold text-gray-800 mb-3">All Rankings:</h3>
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b-2 border-gray-300">
+                    <th className="p-2 text-left">Rank</th>
+                    {PLAYER_NAMES.map(player => (
+                      <th key={player} className="p-2 text-center">{player}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {Array.from({ length: 24 }, (_, i) => i + 1).map(rank => (
+                    <tr key={rank} className="border-b">
+                      <td className="p-2 font-bold">{rank}</td>
+                      {PLAYER_NAMES.map(player => (
+                        <td key={player} className="p-2 text-center text-xs">
+                          {rankings[player]?.[rank] || '-'}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
 
             <div className="text-center">
               <button
-                onClick={skipPuzzle}
-                className="bg-gray-600 text-white px-6 py-3 rounded-lg font-bold hover:bg-gray-700 transition"
+                onClick={startDraft}
+                className="bg-gradient-to-r from-green-600 to-emerald-600 text-white px-8 py-4 rounded-lg text-xl font-bold hover:from-green-700 hover:to-emerald-700 transition shadow-lg"
               >
-                Skip Puzzle (DNF)
+                Start the Draft!
               </button>
             </div>
           </div>
-        );
-      };
-
-      const renderRiskDecision = () => {
-        return (
-          <div className="max-w-2xl mx-auto text-center">
-            <div className="bg-white p-8 rounded-lg shadow-2xl border-4 border-purple-600">
-              <Flame className="w-20 h-20 mx-auto mb-4 text-orange-500" />
-              <h2 className="text-3xl font-bold text-gray-900 mb-4">Risk vs. Reward</h2>
-              <p className="text-lg text-gray-700 mb-2">
-                Your time: <span className="font-bold text-purple-600">{formatTime(challengeTimes[selectedPlayer])}</span>
-              </p>
-              <p className="text-gray-700 mb-6">
-                Do you want to spin the wheel for a chance at a reward or penalty?
-              </p>
-              <div className="space-y-4">
-                <div className="bg-green-100 p-4 rounded-lg border-2 border-green-400">
-                  <p className="font-bold text-green-800">🎁 REWARD: Swap times with another player</p>
-                </div>
-                <div className="bg-red-100 p-4 rounded-lg border-2 border-red-400">
-                  <p className="font-bold text-red-800">⚠️ PENALTY: Draft last regardless of time</p>
-                </div>
-              </div>
-              <div className="mt-8 flex gap-4 justify-center">
-                <button
-                  onClick={() => handleRiskDecision(true)}
-                  className="bg-gradient-to-r from-purple-600 to-pink-600 text-white px-8 py-4 rounded-lg text-xl font-bold hover:from-purple-700 hover:to-pink-700 transition shadow-lg"
-                >
-                  Spin the Wheel!
-                </button>
-                <button
-                  onClick={() => handleRiskDecision(false)}
-                  className="bg-gray-600 text-white px-8 py-4 rounded-lg text-xl font-bold hover:bg-gray-700 transition"
-                >
-                  Play It Safe
-                </button>
-              </div>
-            </div>
-          </div>
-        );
-      };
-
-      const renderSpinning = () => {
-        return (
-          <div className="max-w-2xl mx-auto text-center">
-            <div className="bg-white p-8 rounded-lg shadow-2xl border-4 border-yellow-600">
-              <h2 className="text-3xl font-bold text-gray-900 mb-8">Spinning the Wheel...</h2>
-              <div className={`text-9xl mx-auto mb-8 ${isSpinning ? 'spinning' : ''}`}>
-                🎡
-              </div>
-              {!isSpinning && spinResult && (
-                <div className={`text-2xl font-bold p-6 rounded-lg ${
-                  spinResult === 'reward'
-                    ? 'bg-green-100 text-green-800 border-4 border-green-400'
-                    : 'bg-red-100 text-red-800 border-4 border-red-400'
-                }`}>
-                  {spinResult === 'reward' ? '🎁 REWARD!' : '⚠️ PENALTY!'}
-                </div>
-              )}
-            </div>
-          </div>
-        );
-      };
-
-      const renderRewardSwap = () => {
-        return (
-          <div className="max-w-2xl mx-auto text-center">
-            <div className="bg-white p-8 rounded-lg shadow-2xl border-4 border-green-600">
-              <Award className="w-20 h-20 mx-auto mb-4 text-green-600" />
-              <h2 className="text-3xl font-bold text-gray-900 mb-4">You Won a Reward!</h2>
-              <p className="text-lg text-gray-700 mb-6">
-                You can swap your challenge time with any other player's time!
-              </p>
-              <div className="space-y-4">
-                <button
-                  onClick={() => handleRewardSwap(true)}
-                  className="w-full bg-gradient-to-r from-green-600 to-emerald-600 text-white px-8 py-4 rounded-lg text-xl font-bold hover:from-green-700 hover:to-emerald-700 transition shadow-lg"
-                >
-                  Use Reward (Swap Times)
-                </button>
-                <button
-                  onClick={() => handleRewardSwap(false)}
-                  className="w-full bg-gray-600 text-white px-8 py-4 rounded-lg text-xl font-bold hover:bg-gray-700 transition"
-                >
-                  Keep My Time
-                </button>
-              </div>
-            </div>
-          </div>
-        );
-      };
-
-      const renderWaiting = () => {
-        return (
-          <div className="max-w-2xl mx-auto text-center">
-            <div className="bg-white p-8 rounded-lg shadow-2xl border-4 border-blue-600">
-              <Clock className="w-20 h-20 mx-auto mb-4 text-blue-600" />
-              <h2 className="text-3xl font-bold text-gray-900 mb-4">Waiting for Other Players</h2>
-              <p className="text-lg text-gray-700 mb-6">
-                {selectedPlayer}, you're all done! Waiting for other players to complete their rankings and challenge.
-              </p>
-              <p className="text-gray-600 mb-4">
-                Completed: {completedPlayers.length} / {PLAYER_NAMES.length}
-              </p>
-              <button
-                onClick={() => setPhase('playerSelect')}
-                className="bg-gradient-to-r from-orange-500 to-red-600 text-white px-8 py-4 rounded-lg text-xl font-bold hover:from-orange-600 hover:to-red-700 transition shadow-lg"
-              >
-                Back to Player Select
-              </button>
-            </div>
-          </div>
-        );
-      };
-
-      const renderRankingsReview = () => {
-        return (
-          <div className="max-w-7xl mx-auto">
-            <div className="bg-white p-6 rounded-lg shadow-xl mb-6 border-4 border-orange-600">
-              <h2 className="text-3xl font-bold text-gray-900 mb-4">Challenge Results & Rankings</h2>
-              
-              <div className="mb-6">
-                <h3 className="text-2xl font-bold text-gray-800 mb-3">Challenge Times:</h3>
-                <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-                  {PLAYER_NAMES.map(player => (
-                    <div key={player} className="bg-blue-100 p-4 rounded-lg border-2 border-blue-400 text-center">
-                      <p className="font-bold text-gray-900">{player}</p>
-                      <p className="text-2xl text-blue-600 font-bold">{formatTime(challengeTimes[player] || 0)}</p>
-                      {riskRewards[player] === 'penalty' && (
-                        <p className="text-red-600 text-sm font-bold mt-1">⚠️ PENALTY</p>
-                      )}
-                      {riskRewards[player] === 'reward' && (
-                        <p className="text-green-600 text-sm font-bold mt-1">🎁 REWARD</p>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className="overflow-x-auto mb-6">
-                <h3 className="text-2xl font-bold text-gray-800 mb-3">All Rankings:</h3>
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b-2 border-gray-300">
-                      <th className="p-2 text-left">Rank</th>
-                      {PLAYER_NAMES.map(player => (
-                        <th key={player} className="p-2 text-center">{player}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {Array.from({ length: 24 }, (_, i) => i + 1).map(rank => (
-                      <tr key={rank} className="border-b">
-                        <td className="p-2 font-bold">{rank}</td>
-                        {PLAYER_NAMES.map(player => (
-                          <td key={player} className="p-2 text-center text-xs">
-                            {rankings[player]?.[rank] || '-'}
-                          </td>
-                        ))}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-
-              <div className="text-center">
-                <button
-                  onClick={startDraft}
-                  className="bg-gradient-to-r from-green-600 to-emerald-600 text-white px-8 py-4 rounded-lg text-xl font-bold hover:from-green-700 hover:to-emerald-700 transition shadow-lg"
-                >
-                  Start the Draft!
-                </button>
-              </div>
-            </div>
-          </div>
-        );
-      };
+        </div>
+      );
 
       const renderDraft = () => {
-        const availableContestants = CONTESTANTS.map(c => c.name).filter(name => {
-          return !Object.values(teams).flat().includes(name);
-        });
+        const availableContestants = CONTESTANTS.map(c => c.name).filter(name =>
+          !Object.values(teams).flat().includes(name)
+        );
 
         return (
           <div className="max-w-7xl mx-auto">
             <div className="bg-white p-6 rounded-lg shadow-xl mb-6 border-4 border-green-600">
               <h2 className="text-3xl font-bold text-gray-900 mb-2">Draft Phase</h2>
-              <p className="text-lg text-gray-700">
-                Each player drafts 4 contestants in order. Click a contestant to draft them.
-              </p>
+              <p className="text-lg text-gray-700">Each player drafts 4 contestants in order.</p>
               <div className="mt-4">
                 <h3 className="font-bold text-xl text-gray-800 mb-2">Draft Order:</h3>
                 <div className="flex gap-2 flex-wrap">
@@ -879,8 +902,8 @@ const firebaseConfig = {
       };
 
       const renderExileSelect = () => {
-        const remainingPlayers = PLAYER_NAMES.filter(p => !exileSelections[p]);
-        
+        const remainingPlayers = PLAYER_NAMES.filter(p => !exileSelections[p] && exileSelections[p] !== 0);
+
         if (remainingPlayers.length === 0) {
           return (
             <div className="max-w-2xl mx-auto text-center">
@@ -888,7 +911,7 @@ const firebaseConfig = {
                 <h2 className="text-3xl font-bold text-gray-900 mb-4">All Players Have Chosen!</h2>
                 <button
                   onClick={() => setPhase('complete')}
-                  className="bg-gradient-to-r from-purple-600 to-pink-600 text-white px-8 py-4 rounded-lg text-xl font-bold hover:from-purple-700 hover:to-pink-700 transition shadow-lg"
+                  className="bg-gradient-to-r from-purple-600 to-pink-600 text-white px-8 py-4 rounded-lg text-xl font-bold"
                 >
                   View Final Results
                 </button>
@@ -901,9 +924,6 @@ const firebaseConfig = {
           <div className="max-w-2xl mx-auto text-center">
             <div className="bg-white p-8 rounded-lg shadow-2xl border-4 border-purple-600">
               <h2 className="text-3xl font-bold text-gray-900 mb-4">Select Your Player for Exile Choice</h2>
-              <p className="text-lg text-gray-700 mb-6">
-                These players still need to choose their exile tribe:
-              </p>
               <div className="grid grid-cols-2 gap-4">
                 {remainingPlayers.map(player => (
                   <button
@@ -931,11 +951,8 @@ const firebaseConfig = {
           <div className="max-w-4xl mx-auto">
             <div className="bg-white p-6 rounded-lg shadow-xl mb-6 border-4 border-red-600 text-center">
               <h2 className="text-3xl font-bold text-gray-900 mb-2">{selectedPlayer}'s Exile Choice</h2>
-              <p className="text-lg text-gray-700">
-                Choose which exile tribe you want to back as your 5th team member
-              </p>
+              <p className="text-lg text-gray-700">Choose which exile tribe you want as your 5th team member</p>
             </div>
-
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <button
                 onClick={() => submitExileSelection(0)}
@@ -944,13 +961,10 @@ const firebaseConfig = {
                 <h3 className="font-bold text-2xl text-purple-900 mb-4">🏝️ Tribe A</h3>
                 <ul className="space-y-2">
                   {tribe1.map((contestant, idx) => (
-                    <li key={idx} className="text-purple-800 font-medium text-lg bg-purple-200 p-2 rounded">
-                      {contestant}
-                    </li>
+                    <li key={idx} className="text-purple-800 font-medium text-lg bg-purple-200 p-2 rounded">{contestant}</li>
                   ))}
                 </ul>
               </button>
-
               <button
                 onClick={() => submitExileSelection(1)}
                 className="bg-teal-100 p-6 rounded-lg border-4 border-teal-600 hover:bg-teal-200 transition"
@@ -958,9 +972,7 @@ const firebaseConfig = {
                 <h3 className="font-bold text-2xl text-teal-900 mb-4">🏝️ Tribe B</h3>
                 <ul className="space-y-2">
                   {tribe2.map((contestant, idx) => (
-                    <li key={idx} className="text-teal-800 font-medium text-lg bg-teal-200 p-2 rounded">
-                      {contestant}
-                    </li>
+                    <li key={idx} className="text-teal-800 font-medium text-lg bg-teal-200 p-2 rounded">{contestant}</li>
                   ))}
                 </ul>
               </button>
@@ -972,7 +984,7 @@ const firebaseConfig = {
       const renderComplete = () => {
         const tribe1 = exileTribe.filter((_, i) => i % 2 === 0);
         const tribe2 = exileTribe.filter((_, i) => i % 2 === 1);
-        
+
         return (
           <div className="max-w-7xl mx-auto space-y-6">
             <div className="bg-gradient-to-r from-green-700 to-emerald-700 p-8 rounded-lg shadow-2xl text-center border-4 border-green-900">
@@ -982,17 +994,7 @@ const firebaseConfig = {
             </div>
 
             <div className="bg-white p-6 rounded-lg shadow-xl border-4 border-orange-600">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="font-bold text-2xl text-gray-800">
-                  📋 Complete Rankings Breakdown
-                </h3>
-                <button
-                  onClick={downloadRankingsAsPDF}
-                  className="bg-gradient-to-r from-blue-600 to-blue-700 text-white px-6 py-3 rounded-lg font-bold hover:from-blue-700 hover:to-blue-800 transition border-2 border-blue-800 shadow-lg flex items-center gap-2"
-                >
-                  📥 Download Results
-                </button>
-              </div>
+              <h3 className="font-bold text-2xl text-gray-800 mb-4">📋 Complete Rankings Breakdown</h3>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
@@ -1001,9 +1003,7 @@ const firebaseConfig = {
                       {draftOrder.map((player, idx) => (
                         <th key={player} className="p-3 text-center font-bold text-gray-700 bg-orange-100">
                           <div className="flex flex-col items-center">
-                            <div className="w-8 h-8 bg-orange-600 text-white rounded-full flex items-center justify-center font-bold mb-1">
-                              {idx + 1}
-                            </div>
+                            <div className="w-8 h-8 bg-orange-600 text-white rounded-full flex items-center justify-center font-bold mb-1">{idx + 1}</div>
                             <div>{player}</div>
                           </div>
                         </th>
@@ -1015,17 +1015,15 @@ const firebaseConfig = {
                       <tr key={rank} className="border-b border-gray-200 hover:bg-orange-50">
                         <td className="p-3 font-bold text-gray-700 bg-orange-50">{rank}</td>
                         {draftOrder.map(player => {
-                          const contestant = rankings[player][rank];
+                          const contestant = rankings[player] && rankings[player][rank];
                           const isDrafted = teams[player]?.includes(contestant);
                           const isExiled = exileTribe.includes(contestant);
-                          
                           return (
-                            <td 
-                              key={player} 
+                            <td
+                              key={player}
                               className={`p-3 text-center text-sm font-medium ${
                                 isDrafted ? 'bg-green-100 text-green-800 font-bold' :
-                                isExiled ? 'bg-red-100 text-red-700 font-bold' :
-                                'text-gray-700'
+                                isExiled  ? 'bg-red-100 text-red-700 font-bold' : 'text-gray-700'
                               }`}
                             >
                               {contestant || '-'}
@@ -1040,15 +1038,15 @@ const firebaseConfig = {
               <div className="mt-4 flex gap-6 text-sm">
                 <div className="flex items-center gap-2">
                   <div className="w-4 h-4 bg-green-100 border-2 border-green-300 rounded"></div>
-                  <span className="text-gray-700 font-medium">Drafted to team</span>
+                  <span>Drafted to team</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <div className="w-4 h-4 bg-red-100 border-2 border-red-300 rounded"></div>
-                  <span className="text-gray-700 font-medium">Sent to Exile Island</span>
+                  <span>Sent to Exile Island</span>
                 </div>
               </div>
             </div>
-            
+
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {PLAYER_NAMES.map(player => (
                 <div key={player} className="bg-white p-6 rounded-lg shadow-xl border-4 border-orange-400">
@@ -1070,13 +1068,13 @@ const firebaseConfig = {
                   <div className="border-t-2 border-gray-300 pt-3">
                     <h4 className="font-semibold text-gray-700 mb-2 text-lg">Exile Tribe:</h4>
                     <p className="text-base text-purple-700 font-bold bg-purple-100 p-2 rounded">
-                      {exileSelections[player] === 0 ? '🏝️ Tribe A' : '🏝️ Tribe B'}
+                      {exileSelections[player] === 0 ? '🏝️ Tribe A' : exileSelections[player] === 1 ? '🏝️ Tribe B' : '—'}
                     </p>
                   </div>
                 </div>
               ))}
             </div>
-            
+
             <div className="bg-white p-6 rounded-lg shadow-xl border-4 border-red-600">
               <h3 className="font-bold text-2xl mb-4 text-gray-800 flex items-center gap-2">
                 <Target className="w-8 h-8 text-red-600" />
@@ -1101,7 +1099,7 @@ const firebaseConfig = {
                 </div>
               </div>
             </div>
-            
+
             <div className="bg-red-100 p-6 rounded-lg border-4 border-red-600">
               <h3 className="font-bold text-xl text-red-900 mb-3">🔥 Want to Start Over?</h3>
               <p className="text-red-800 mb-3">Enter proctor code to reset the draft:</p>
@@ -1125,28 +1123,30 @@ const firebaseConfig = {
         );
       };
 
+      // ─── LOADING STATE ───────────────────────────────────────────────────────
       if (!dataLoaded) {
         return (
-          <div className="min-h-screen bg-gradient-to-br from-orange-200 via-yellow-100 to-red-200 p-6 flex items-center justify-center">
+          <div className="min-h-screen bg-gradient-to-br from-orange-200 via-yellow-100 to-red-200 flex items-center justify-center">
             <div className="text-2xl font-bold text-gray-800">Loading draft data...</div>
           </div>
         );
       }
 
+      // ─── MAIN RENDER ─────────────────────────────────────────────────────────
       return (
         <div className="min-h-screen bg-gradient-to-br from-orange-200 via-yellow-100 to-red-200 p-6">
-          {phase === 'playerSelect' && renderPlayerSelect()}
-          {phase === 'ranking' && renderRanking()}
-          {phase === 'challenge' && renderChallenge()}
-          {phase === 'riskDecision' && renderRiskDecision()}
-          {phase === 'spinning' && renderSpinning()}
-          {phase === 'waiting' && renderWaiting()}
+          {phase === 'playerSelect'   && renderPlayerSelect()}
+          {phase === 'ranking'        && renderRanking()}
+          {phase === 'challenge'      && renderChallenge()}
+          {phase === 'riskDecision'   && renderRiskDecision()}
+          {phase === 'spinning'       && renderSpinning()}
+          {phase === 'waiting'        && renderWaiting()}
           {phase === 'rankingsReview' && renderRankingsReview()}
-          {phase === 'draft' && renderDraft()}
-          {phase === 'rewardSwap' && renderRewardSwap()}
-          {phase === 'exileSelect' && renderExileSelect()}
-          {phase === 'exileChoice' && renderExileChoice()}
-          {phase === 'complete' && renderComplete()}
+          {phase === 'draft'          && renderDraft()}
+          {phase === 'rewardSwap'     && renderRewardSwap()}
+          {phase === 'exileSelect'    && renderExileSelect()}
+          {phase === 'exileChoice'    && renderExileChoice()}
+          {phase === 'complete'       && renderComplete()}
         </div>
       );
     }
