@@ -1,0 +1,1124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Survivor 50 Fantasy Draft</title>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <style>
+    @keyframes spin-wheel {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(1800deg); }
+    }
+    .spinning {
+      animation: spin-wheel 3s cubic-bezier(0.17, 0.67, 0.35, 0.96) forwards;
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect } = React;
+    const { Trophy, Users, Target, Award, Flame, Eye, EyeOff, Clock } = lucide;
+
+    // Survivor 50 Cast - 24 Legendary Contestants
+    const CONTESTANTS = [
+      { name: "Aubry Bracco", seasons: "Kaôh Rōng, Game Changers, Edge of Extinction", placement: "5th, 6th, 6th" },
+      { name: "Quintavius 'Q' Burdette", seasons: "Survivor 46", placement: "5th" },
+      { name: "Charlie Davis", seasons: "Survivor 46", placement: "Winner" },
+      { name: "Rick Devens", seasons: "Edge of Extinction", placement: "4th" },
+      { name: "Colby Donaldson", seasons: "Australian Outback, All-Stars, Heroes vs. Villains", placement: "Runner-up, 12th, 5th" },
+      { name: "Tiffany Ervin", seasons: "Survivor 46", placement: "7th" },
+      { name: "Cirie Fields", seasons: "Panama, Micronesia, Heroes vs. Villains, Game Changers", placement: "4th, 3rd, 17th, 6th" },
+      { name: "Emily Flippen", seasons: "Survivor 45", placement: "5th" },
+      { name: "Kyle Fraser", seasons: "Survivor 48", placement: "5th" },
+      { name: "Chrissy Hofbeck", seasons: "Heroes vs. Healers vs. Hustlers", placement: "Runner-up" },
+      { name: "Christian Hubicki", seasons: "David vs. Goliath", placement: "6th" },
+      { name: "Joe Hunter", seasons: "Survivor 48", placement: "Runner-up" },
+      { name: "Kamilla Karthigesu", seasons: "Survivor 48", placement: "4th" },
+      { name: "Angelina Keeley", seasons: "David vs. Goliath", placement: "Runner-up" },
+      { name: "Stephenie LaGrossa", seasons: "Palau, Guatemala, Heroes vs. Villains", placement: "7th, Runner-up, 19th" },
+      { name: "Jenna Lewis", seasons: "Borneo, All-Stars", placement: "8th, 3rd" },
+      { name: "Savannah Louie", seasons: "Survivor 49", placement: "4th" },
+      { name: "Ozzy Lusth", seasons: "Cook Islands, Micronesia, South Pacific, Game Changers", placement: "Runner-up, 9th, 4th, 12th" },
+      { name: "Genevieve Mushaluk", seasons: "Survivor 47", placement: "3rd" },
+      { name: "Dee Valladares", seasons: "Survivor 45", placement: "Winner" },
+      { name: "Rizo Velovic", seasons: "Survivor 49", placement: "7th" },
+      { name: "Coach Wade", seasons: "Tocantins, Heroes vs. Villains, South Pacific", placement: "5th, 8th, Runner-up" },
+      { name: "Mike White", seasons: "David vs. Goliath", placement: "Runner-up" },
+      { name: "Jonathan Young", seasons: "Survivor 42", placement: "5th" }
+    ];
+
+    const PLAYER_NAMES = ["JIM", "SANDY", "LOGAN", "SAM", "HALEY"];
+
+    function SurvivorDraft() {
+      const [phase, setPhase] = useState('playerSelect');
+      const [selectedPlayer, setSelectedPlayer] = useState(null);
+      const [rankings, setRankings] = useState({});
+      const [challengeTimes, setChallengeTimes] = useState({});
+      const [completedPlayers, setCompletedPlayers] = useState([]);
+      const [draftOrder, setDraftOrder] = useState([]);
+      const [riskRewards, setRiskRewards] = useState({});
+      const [isSpinning, setIsSpinning] = useState(false);
+      const [spinResult, setSpinResult] = useState(null);
+      const [teams, setTeams] = useState({});
+      const [exileTribe, setExileTribe] = useState([]);
+      const [exileSelections, setExileSelections] = useState({});
+      const [draggedContestant, setDraggedContestant] = useState(null);
+      const [puzzleGrid, setPuzzleGrid] = useState([]);
+      const [solvedGrid] = useState([[1, 2, 3], [4, 5, 6], [7, 8, null]]);
+      const [puzzleStartTime, setPuzzleStartTime] = useState(null);
+      const [elapsedTime, setElapsedTime] = useState(0);
+      const [proctorCode, setProctorCode] = useState('');
+      const [dataLoaded, setDataLoaded] = useState(false);
+
+      // Load state from persistent storage on mount
+      useEffect(() => {
+        loadFromStorage();
+      }, []);
+
+      // Save state to persistent storage whenever it changes
+      useEffect(() => {
+        if (dataLoaded) {
+          saveToStorage();
+        }
+      }, [phase, rankings, challengeTimes, completedPlayers, draftOrder, riskRewards, teams, exileTribe, exileSelections, dataLoaded]);
+
+      const loadFromStorage = async () => {
+        try {
+          const [phaseRes, rankingsRes, timesRes, completedRes, orderRes, rewardsRes, teamsRes, exileRes, selectionsRes] = await Promise.all([
+            window.storage.get('survivor-phase', true).catch(() => null),
+            window.storage.get('survivor-rankings', true).catch(() => null),
+            window.storage.get('survivor-times', true).catch(() => null),
+            window.storage.get('survivor-completed', true).catch(() => null),
+            window.storage.get('survivor-order', true).catch(() => null),
+            window.storage.get('survivor-rewards', true).catch(() => null),
+            window.storage.get('survivor-teams', true).catch(() => null),
+            window.storage.get('survivor-exile', true).catch(() => null),
+            window.storage.get('survivor-selections', true).catch(() => null)
+          ]);
+
+          if (phaseRes?.value) setPhase(phaseRes.value);
+          if (rankingsRes?.value) setRankings(JSON.parse(rankingsRes.value));
+          if (timesRes?.value) setChallengeTimes(JSON.parse(timesRes.value));
+          if (completedRes?.value) setCompletedPlayers(JSON.parse(completedRes.value));
+          if (orderRes?.value) setDraftOrder(JSON.parse(orderRes.value));
+          if (rewardsRes?.value) setRiskRewards(JSON.parse(rewardsRes.value));
+          if (teamsRes?.value) setTeams(JSON.parse(teamsRes.value));
+          if (exileRes?.value) setExileTribe(JSON.parse(exileRes.value));
+          if (selectionsRes?.value) setExileSelections(JSON.parse(selectionsRes.value));
+          
+          setDataLoaded(true);
+        } catch (error) {
+          console.error('Error loading state:', error);
+          setDataLoaded(true);
+        }
+      };
+
+      const saveToStorage = async () => {
+        try {
+          await Promise.all([
+            window.storage.set('survivor-phase', phase, true),
+            window.storage.set('survivor-rankings', JSON.stringify(rankings), true),
+            window.storage.set('survivor-times', JSON.stringify(challengeTimes), true),
+            window.storage.set('survivor-completed', JSON.stringify(completedPlayers), true),
+            window.storage.set('survivor-order', JSON.stringify(draftOrder), true),
+            window.storage.set('survivor-rewards', JSON.stringify(riskRewards), true),
+            window.storage.set('survivor-teams', JSON.stringify(teams), true),
+            window.storage.set('survivor-exile', JSON.stringify(exileTribe), true),
+            window.storage.set('survivor-selections', JSON.stringify(exileSelections), true)
+          ]);
+        } catch (error) {
+          console.error('Error saving state:', error);
+        }
+      };
+
+      const generatePuzzle = () => {
+        let grid = solvedGrid.map(row => [...row]);
+        let emptyRow = 2, emptyCol = 2;
+        
+        for (let i = 0; i < 50; i++) {
+          const moves = [];
+          if (emptyRow > 0) moves.push([-1, 0]);
+          if (emptyRow < 2) moves.push([1, 0]);
+          if (emptyCol > 0) moves.push([0, -1]);
+          if (emptyCol < 2) moves.push([0, 1]);
+          
+          const [dr, dc] = moves[Math.floor(Math.random() * moves.length)];
+          const newRow = emptyRow + dr;
+          const newCol = emptyCol + dc;
+          
+          [grid[emptyRow][emptyCol], grid[newRow][newCol]] = [grid[newRow][newCol], grid[emptyRow][emptyCol]];
+          emptyRow = newRow;
+          emptyCol = newCol;
+        }
+        
+        setPuzzleGrid(grid);
+      };
+
+      useEffect(() => {
+        if (puzzleStartTime && phase === 'challenge') {
+          const interval = setInterval(() => {
+            setElapsedTime(Math.floor((Date.now() - puzzleStartTime) / 1000));
+          }, 100);
+          return () => clearInterval(interval);
+        }
+      }, [puzzleStartTime, phase]);
+
+      const formatTime = (seconds) => {
+        if (seconds >= 999999) return "DNF";
+        const mins = Math.floor(seconds / 60);
+        const secs = seconds % 60;
+        return `${mins}:${secs.toString().padStart(2, '0')}`;
+      };
+
+      const selectPlayer = (playerName) => {
+        if (completedPlayers.includes(playerName)) {
+          alert(`${playerName} has already completed!`);
+          return;
+        }
+        setSelectedPlayer(playerName);
+        setPhase('ranking');
+      };
+
+      const handleRankingChange = (contestant, rank) => {
+        const playerRankings = rankings[selectedPlayer] || {};
+        const updatedRankings = { ...playerRankings };
+        
+        Object.keys(updatedRankings).forEach(key => {
+          if (updatedRankings[key] === contestant.name) {
+            delete updatedRankings[key];
+          }
+        });
+        
+        updatedRankings[rank] = contestant.name;
+        setRankings({ ...rankings, [selectedPlayer]: updatedRankings });
+      };
+
+      const submitRankings = () => {
+        const playerRankings = rankings[selectedPlayer] || {};
+        if (Object.keys(playerRankings).length !== 24) {
+          alert('Please rank all 24 contestants!');
+          return;
+        }
+        
+        setPhase('challenge');
+        generatePuzzle();
+        setPuzzleStartTime(Date.now());
+        setElapsedTime(0);
+      };
+
+      const moveTile = (row, col) => {
+        const newGrid = puzzleGrid.map(r => [...r]);
+        
+        let emptyRow, emptyCol;
+        for (let i = 0; i < 3; i++) {
+          for (let j = 0; j < 3; j++) {
+            if (newGrid[i][j] === null) {
+              emptyRow = i;
+              emptyCol = j;
+            }
+          }
+        }
+        
+        const isAdjacent = 
+          (row === emptyRow && Math.abs(col - emptyCol) === 1) ||
+          (col === emptyCol && Math.abs(row - emptyRow) === 1);
+        
+        if (isAdjacent) {
+          [newGrid[row][col], newGrid[emptyRow][emptyCol]] = [newGrid[emptyRow][emptyCol], newGrid[row][col]];
+          setPuzzleGrid(newGrid);
+          
+          if (JSON.stringify(newGrid) === JSON.stringify(solvedGrid)) {
+            completePuzzle();
+          }
+        }
+      };
+
+      const completePuzzle = () => {
+        const timeSeconds = Math.floor((Date.now() - puzzleStartTime) / 1000);
+        const newTimes = { ...challengeTimes, [selectedPlayer]: timeSeconds };
+        setChallengeTimes(newTimes);
+        
+        const newCompleted = [...completedPlayers, selectedPlayer];
+        setCompletedPlayers(newCompleted);
+        
+        setPhase('riskDecision');
+      };
+
+      const skipPuzzle = () => {
+        if (!window.confirm('Are you sure you want to skip the puzzle? You will receive a DNF time.')) return;
+        
+        const newTimes = { ...challengeTimes, [selectedPlayer]: 999999 };
+        setChallengeTimes(newTimes);
+        
+        const newCompleted = [...completedPlayers, selectedPlayer];
+        setCompletedPlayers(newCompleted);
+        
+        setPhase('riskDecision');
+      };
+
+      const handleRiskDecision = (takeRisk) => {
+        if (takeRisk) {
+          setPhase('spinning');
+          setIsSpinning(true);
+          
+          setTimeout(() => {
+            const result = Math.random() < 0.5 ? 'reward' : 'penalty';
+            setSpinResult(result);
+            setIsSpinning(false);
+            
+            setTimeout(() => {
+              const newRewards = { ...riskRewards, [selectedPlayer]: result };
+              setRiskRewards(newRewards);
+              
+              if (result === 'reward') {
+                setPhase('rewardSwap');
+              } else {
+                setPhase('waiting');
+              }
+            }, 2000);
+          }, 3000);
+        } else {
+          setPhase('waiting');
+        }
+      };
+
+      const handleRewardSwap = (doSwap) => {
+        if (doSwap) {
+          const otherPlayers = PLAYER_NAMES.filter(p => p !== selectedPlayer);
+          const playerToSwap = prompt(`Enter the name of the player you want to swap times with:\n${otherPlayers.join(', ')}`);
+          
+          if (playerToSwap && otherPlayers.includes(playerToSwap.toUpperCase())) {
+            const tempTime = challengeTimes[selectedPlayer];
+            const newTimes = {
+              ...challengeTimes,
+              [selectedPlayer]: challengeTimes[playerToSwap.toUpperCase()],
+              [playerToSwap.toUpperCase()]: tempTime
+            };
+            setChallengeTimes(newTimes);
+            alert(`Times swapped between ${selectedPlayer} and ${playerToSwap.toUpperCase()}!`);
+          } else {
+            alert('Invalid player name. Proceeding without swap.');
+          }
+        }
+        setPhase('waiting');
+      };
+
+      const startDraft = () => {
+        const sortedPlayers = [...PLAYER_NAMES].sort((a, b) => {
+          const timeA = challengeTimes[a] || 999999;
+          const timeB = challengeTimes[b] || 999999;
+          return timeA - timeB;
+        });
+        
+        const penaltyPlayers = Object.keys(riskRewards).filter(p => riskRewards[p] === 'penalty');
+        const finalOrder = sortedPlayers.filter(p => !penaltyPlayers.includes(p)).concat(penaltyPlayers);
+        
+        setDraftOrder(finalOrder);
+        
+        const initialTeams = {};
+        PLAYER_NAMES.forEach(player => {
+          initialTeams[player] = [];
+        });
+        setTeams(initialTeams);
+        
+        setPhase('draft');
+      };
+
+      const handleDraft = (player, contestant) => {
+        const newTeams = { ...teams };
+        
+        if (newTeams[player].includes(contestant)) {
+          newTeams[player] = newTeams[player].filter(c => c !== contestant);
+        } else {
+          if (newTeams[player].length >= 4) {
+            alert(`${player} already has 4 contestants!`);
+            return;
+          }
+          newTeams[player] = [...newTeams[player], contestant];
+        }
+        
+        setTeams(newTeams);
+      };
+
+      const finishDraft = () => {
+        for (const player of PLAYER_NAMES) {
+          if (!teams[player] || teams[player].length !== 4) {
+            alert(`${player} must draft exactly 4 contestants!`);
+            return;
+          }
+        }
+        
+        const allDrafted = Object.values(teams).flat();
+        const exiled = CONTESTANTS.map(c => c.name).filter(c => !allDrafted.includes(c));
+        setExileTribe(exiled);
+        
+        setPhase('exileSelect');
+      };
+
+      const submitExileSelection = (tribeIndex) => {
+        const newSelections = { ...exileSelections, [selectedPlayer]: tribeIndex };
+        setExileSelections(newSelections);
+        
+        if (Object.keys(newSelections).length === PLAYER_NAMES.length) {
+          setPhase('complete');
+        } else {
+          setPhase('playerSelect');
+        }
+      };
+
+      const resetDraft = () => {
+        if (proctorCode !== 'RESET2025') {
+          alert('Incorrect proctor code!');
+          return;
+        }
+        
+        if (!window.confirm('Are you sure you want to reset the entire draft? This cannot be undone.')) {
+          return;
+        }
+        
+        setPhase('playerSelect');
+        setSelectedPlayer(null);
+        setRankings({});
+        setChallengeTimes({});
+        setCompletedPlayers([]);
+        setDraftOrder([]);
+        setRiskRewards({});
+        setTeams({});
+        setExileTribe([]);
+        setExileSelections({});
+        setProctorCode('');
+        
+        window.storage.delete('survivor-phase', true);
+        window.storage.delete('survivor-rankings', true);
+        window.storage.delete('survivor-times', true);
+        window.storage.delete('survivor-completed', true);
+        window.storage.delete('survivor-order', true);
+        window.storage.delete('survivor-rewards', true);
+        window.storage.delete('survivor-teams', true);
+        window.storage.delete('survivor-exile', true);
+        window.storage.delete('survivor-selections', true);
+      };
+
+      const downloadRankingsAsPDF = () => {
+        alert('PDF download would require a server-side library. For now, you can screenshot or print this page!');
+      };
+
+      // RENDER FUNCTIONS
+      const renderPlayerSelect = () => {
+        const availablePlayers = PLAYER_NAMES.filter(p => !completedPlayers.includes(p));
+        
+        if (availablePlayers.length === 0) {
+          return (
+            <div className="max-w-4xl mx-auto text-center">
+              <div className="bg-white p-8 rounded-lg shadow-2xl border-4 border-orange-600">
+                <Trophy className="w-24 h-24 mx-auto mb-6 text-yellow-500" />
+                <h1 className="text-4xl font-bold text-gray-900 mb-4">All Players Complete!</h1>
+                <p className="text-xl text-gray-700 mb-6">
+                  Everyone has finished ranking and the challenge. Ready to review rankings?
+                </p>
+                <button
+                  onClick={() => setPhase('rankingsReview')}
+                  className="bg-gradient-to-r from-orange-500 to-red-600 text-white px-8 py-4 rounded-lg text-xl font-bold hover:from-orange-600 hover:to-red-700 transition shadow-lg border-2 border-orange-700"
+                >
+                  Review Rankings & Start Draft
+                </button>
+              </div>
+            </div>
+          );
+        }
+
+        return (
+          <div className="max-w-4xl mx-auto text-center">
+            <div className="bg-gradient-to-r from-orange-600 to-red-600 p-8 rounded-lg shadow-2xl mb-8 border-4 border-orange-800">
+              <Trophy className="w-20 h-20 mx-auto mb-4 text-yellow-300" />
+              <h1 className="text-5xl font-bold text-white mb-3">SURVIVOR 50</h1>
+              <p className="text-2xl text-orange-100 font-semibold">Fantasy Draft Challenge</p>
+            </div>
+
+            <div className="bg-white p-8 rounded-lg shadow-xl border-4 border-orange-400">
+              <h2 className="text-3xl font-bold text-gray-900 mb-6">Select Your Name</h2>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {PLAYER_NAMES.map(player => (
+                  <button
+                    key={player}
+                    onClick={() => selectPlayer(player)}
+                    disabled={completedPlayers.includes(player)}
+                    className={`p-6 rounded-lg text-2xl font-bold transition border-4 ${
+                      completedPlayers.includes(player)
+                        ? 'bg-gray-300 text-gray-500 border-gray-400 cursor-not-allowed'
+                        : 'bg-gradient-to-r from-orange-500 to-red-500 text-white border-orange-600 hover:from-orange-600 hover:to-red-600 shadow-lg transform hover:scale-105'
+                    }`}
+                  >
+                    <Users className="w-8 h-8 mx-auto mb-2" />
+                    {player}
+                    {completedPlayers.includes(player) && (
+                      <div className="text-sm mt-2">✓ Complete</div>
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {completedPlayers.length > 0 && (
+              <div className="mt-6 bg-green-100 p-4 rounded-lg border-2 border-green-400">
+                <p className="text-green-800 font-semibold">
+                  {completedPlayers.length} of {PLAYER_NAMES.length} players completed
+                </p>
+              </div>
+            )}
+          </div>
+        );
+      };
+
+      const renderRanking = () => {
+        const playerRankings = rankings[selectedPlayer] || {};
+        const rankedContestants = Object.values(playerRankings);
+        
+        return (
+          <div className="max-w-6xl mx-auto">
+            <div className="bg-white p-6 rounded-lg shadow-xl mb-6 border-4 border-orange-600">
+              <h2 className="text-3xl font-bold text-gray-900 mb-2">{selectedPlayer}'s Rankings</h2>
+              <p className="text-gray-700 text-lg">
+                Rank all 24 contestants from 1 (most likely to win) to 24 (least likely)
+              </p>
+              <div className="mt-4 text-xl font-semibold text-orange-600">
+                {Object.keys(playerRankings).length} / 24 ranked
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+              {CONTESTANTS.map(contestant => {
+                const currentRank = Object.keys(playerRankings).find(
+                  rank => playerRankings[rank] === contestant.name
+                );
+                
+                return (
+                  <div
+                    key={contestant.name}
+                    className={`p-4 rounded-lg border-3 ${
+                      currentRank
+                        ? 'bg-orange-100 border-orange-500'
+                        : 'bg-white border-gray-300'
+                    }`}
+                  >
+                    <h3 className="font-bold text-lg text-gray-900 mb-1">{contestant.name}</h3>
+                    <p className="text-xs text-gray-600 mb-2">{contestant.seasons}</p>
+                    <select
+                      value={currentRank || ''}
+                      onChange={(e) => handleRankingChange(contestant, e.target.value)}
+                      className="w-full p-2 border-2 border-gray-300 rounded focus:border-orange-500 focus:outline-none"
+                    >
+                      <option value="">Select rank...</option>
+                      {Array.from({ length: 24 }, (_, i) => i + 1).map(rank => (
+                        <option 
+                          key={rank} 
+                          value={rank}
+                          disabled={playerRankings[rank] && playerRankings[rank] !== contestant.name}
+                        >
+                          {rank}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="text-center">
+              <button
+                onClick={submitRankings}
+                className="bg-gradient-to-r from-green-600 to-emerald-600 text-white px-8 py-4 rounded-lg text-xl font-bold hover:from-green-700 hover:to-emerald-700 transition shadow-lg border-2 border-green-700"
+              >
+                Submit Rankings & Start Challenge
+              </button>
+            </div>
+          </div>
+        );
+      };
+
+      const renderChallenge = () => {
+        return (
+          <div className="max-w-2xl mx-auto">
+            <div className="bg-white p-8 rounded-lg shadow-2xl border-4 border-blue-600 mb-6">
+              <h2 className="text-3xl font-bold text-gray-900 mb-4 flex items-center justify-center gap-3">
+                <Target className="w-10 h-10 text-blue-600" />
+                Immunity Challenge: Sliding Puzzle
+              </h2>
+              <p className="text-lg text-gray-700 mb-2 text-center">
+                Solve the 3x3 sliding puzzle as fast as you can!
+              </p>
+              <div className="text-2xl font-bold text-blue-600 text-center mb-6">
+                <Clock className="w-6 h-6 inline mr-2" />
+                Time: {formatTime(elapsedTime)}
+              </div>
+            </div>
+
+            <div className="bg-white p-8 rounded-lg shadow-xl border-4 border-orange-400 mb-6">
+              <div className="grid grid-cols-3 gap-2 max-w-md mx-auto">
+                {puzzleGrid.map((row, rowIdx) =>
+                  row.map((tile, colIdx) => (
+                    <button
+                      key={`${rowIdx}-${colIdx}`}
+                      onClick={() => moveTile(rowIdx, colIdx)}
+                      className={`aspect-square text-4xl font-bold rounded-lg transition ${
+                        tile === null
+                          ? 'bg-gray-200 cursor-default'
+                          : 'bg-gradient-to-br from-orange-400 to-red-500 text-white hover:from-orange-500 hover:to-red-600 shadow-lg border-4 border-orange-600'
+                      }`}
+                    >
+                      {tile}
+                    </button>
+                  ))
+                )}
+              </div>
+            </div>
+
+            <div className="text-center">
+              <button
+                onClick={skipPuzzle}
+                className="bg-gray-600 text-white px-6 py-3 rounded-lg font-bold hover:bg-gray-700 transition"
+              >
+                Skip Puzzle (DNF)
+              </button>
+            </div>
+          </div>
+        );
+      };
+
+      const renderRiskDecision = () => {
+        return (
+          <div className="max-w-2xl mx-auto text-center">
+            <div className="bg-white p-8 rounded-lg shadow-2xl border-4 border-purple-600">
+              <Flame className="w-20 h-20 mx-auto mb-4 text-orange-500" />
+              <h2 className="text-3xl font-bold text-gray-900 mb-4">Risk vs. Reward</h2>
+              <p className="text-lg text-gray-700 mb-2">
+                Your time: <span className="font-bold text-purple-600">{formatTime(challengeTimes[selectedPlayer])}</span>
+              </p>
+              <p className="text-gray-700 mb-6">
+                Do you want to spin the wheel for a chance at a reward or penalty?
+              </p>
+              <div className="space-y-4">
+                <div className="bg-green-100 p-4 rounded-lg border-2 border-green-400">
+                  <p className="font-bold text-green-800">🎁 REWARD: Swap times with another player</p>
+                </div>
+                <div className="bg-red-100 p-4 rounded-lg border-2 border-red-400">
+                  <p className="font-bold text-red-800">⚠️ PENALTY: Draft last regardless of time</p>
+                </div>
+              </div>
+              <div className="mt-8 flex gap-4 justify-center">
+                <button
+                  onClick={() => handleRiskDecision(true)}
+                  className="bg-gradient-to-r from-purple-600 to-pink-600 text-white px-8 py-4 rounded-lg text-xl font-bold hover:from-purple-700 hover:to-pink-700 transition shadow-lg"
+                >
+                  Spin the Wheel!
+                </button>
+                <button
+                  onClick={() => handleRiskDecision(false)}
+                  className="bg-gray-600 text-white px-8 py-4 rounded-lg text-xl font-bold hover:bg-gray-700 transition"
+                >
+                  Play It Safe
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      };
+
+      const renderSpinning = () => {
+        return (
+          <div className="max-w-2xl mx-auto text-center">
+            <div className="bg-white p-8 rounded-lg shadow-2xl border-4 border-yellow-600">
+              <h2 className="text-3xl font-bold text-gray-900 mb-8">Spinning the Wheel...</h2>
+              <div className={`text-9xl mx-auto mb-8 ${isSpinning ? 'spinning' : ''}`}>
+                🎡
+              </div>
+              {!isSpinning && spinResult && (
+                <div className={`text-2xl font-bold p-6 rounded-lg ${
+                  spinResult === 'reward'
+                    ? 'bg-green-100 text-green-800 border-4 border-green-400'
+                    : 'bg-red-100 text-red-800 border-4 border-red-400'
+                }`}>
+                  {spinResult === 'reward' ? '🎁 REWARD!' : '⚠️ PENALTY!'}
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      };
+
+      const renderRewardSwap = () => {
+        return (
+          <div className="max-w-2xl mx-auto text-center">
+            <div className="bg-white p-8 rounded-lg shadow-2xl border-4 border-green-600">
+              <Award className="w-20 h-20 mx-auto mb-4 text-green-600" />
+              <h2 className="text-3xl font-bold text-gray-900 mb-4">You Won a Reward!</h2>
+              <p className="text-lg text-gray-700 mb-6">
+                You can swap your challenge time with any other player's time!
+              </p>
+              <div className="space-y-4">
+                <button
+                  onClick={() => handleRewardSwap(true)}
+                  className="w-full bg-gradient-to-r from-green-600 to-emerald-600 text-white px-8 py-4 rounded-lg text-xl font-bold hover:from-green-700 hover:to-emerald-700 transition shadow-lg"
+                >
+                  Use Reward (Swap Times)
+                </button>
+                <button
+                  onClick={() => handleRewardSwap(false)}
+                  className="w-full bg-gray-600 text-white px-8 py-4 rounded-lg text-xl font-bold hover:bg-gray-700 transition"
+                >
+                  Keep My Time
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      };
+
+      const renderWaiting = () => {
+        return (
+          <div className="max-w-2xl mx-auto text-center">
+            <div className="bg-white p-8 rounded-lg shadow-2xl border-4 border-blue-600">
+              <Clock className="w-20 h-20 mx-auto mb-4 text-blue-600" />
+              <h2 className="text-3xl font-bold text-gray-900 mb-4">Waiting for Other Players</h2>
+              <p className="text-lg text-gray-700 mb-6">
+                {selectedPlayer}, you're all done! Waiting for other players to complete their rankings and challenge.
+              </p>
+              <p className="text-gray-600 mb-4">
+                Completed: {completedPlayers.length} / {PLAYER_NAMES.length}
+              </p>
+              <button
+                onClick={() => setPhase('playerSelect')}
+                className="bg-gradient-to-r from-orange-500 to-red-600 text-white px-8 py-4 rounded-lg text-xl font-bold hover:from-orange-600 hover:to-red-700 transition shadow-lg"
+              >
+                Back to Player Select
+              </button>
+            </div>
+          </div>
+        );
+      };
+
+      const renderRankingsReview = () => {
+        return (
+          <div className="max-w-7xl mx-auto">
+            <div className="bg-white p-6 rounded-lg shadow-xl mb-6 border-4 border-orange-600">
+              <h2 className="text-3xl font-bold text-gray-900 mb-4">Challenge Results & Rankings</h2>
+              
+              <div className="mb-6">
+                <h3 className="text-2xl font-bold text-gray-800 mb-3">Challenge Times:</h3>
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                  {PLAYER_NAMES.map(player => (
+                    <div key={player} className="bg-blue-100 p-4 rounded-lg border-2 border-blue-400 text-center">
+                      <p className="font-bold text-gray-900">{player}</p>
+                      <p className="text-2xl text-blue-600 font-bold">{formatTime(challengeTimes[player] || 0)}</p>
+                      {riskRewards[player] === 'penalty' && (
+                        <p className="text-red-600 text-sm font-bold mt-1">⚠️ PENALTY</p>
+                      )}
+                      {riskRewards[player] === 'reward' && (
+                        <p className="text-green-600 text-sm font-bold mt-1">🎁 REWARD</p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="overflow-x-auto mb-6">
+                <h3 className="text-2xl font-bold text-gray-800 mb-3">All Rankings:</h3>
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b-2 border-gray-300">
+                      <th className="p-2 text-left">Rank</th>
+                      {PLAYER_NAMES.map(player => (
+                        <th key={player} className="p-2 text-center">{player}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {Array.from({ length: 24 }, (_, i) => i + 1).map(rank => (
+                      <tr key={rank} className="border-b">
+                        <td className="p-2 font-bold">{rank}</td>
+                        {PLAYER_NAMES.map(player => (
+                          <td key={player} className="p-2 text-center text-xs">
+                            {rankings[player]?.[rank] || '-'}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="text-center">
+                <button
+                  onClick={startDraft}
+                  className="bg-gradient-to-r from-green-600 to-emerald-600 text-white px-8 py-4 rounded-lg text-xl font-bold hover:from-green-700 hover:to-emerald-700 transition shadow-lg"
+                >
+                  Start the Draft!
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      };
+
+      const renderDraft = () => {
+        const availableContestants = CONTESTANTS.map(c => c.name).filter(name => {
+          return !Object.values(teams).flat().includes(name);
+        });
+
+        return (
+          <div className="max-w-7xl mx-auto">
+            <div className="bg-white p-6 rounded-lg shadow-xl mb-6 border-4 border-green-600">
+              <h2 className="text-3xl font-bold text-gray-900 mb-2">Draft Phase</h2>
+              <p className="text-lg text-gray-700">
+                Each player drafts 4 contestants in order. Click a contestant to draft them.
+              </p>
+              <div className="mt-4">
+                <h3 className="font-bold text-xl text-gray-800 mb-2">Draft Order:</h3>
+                <div className="flex gap-2 flex-wrap">
+                  {draftOrder.map((player, idx) => (
+                    <div key={player} className="bg-orange-100 px-4 py-2 rounded-lg border-2 border-orange-400">
+                      <span className="font-bold text-orange-800">{idx + 1}.</span> {player}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
+              {PLAYER_NAMES.map(player => (
+                <div key={player} className="bg-white p-4 rounded-lg shadow-lg border-4 border-blue-400">
+                  <h3 className="font-bold text-xl text-gray-900 mb-2">{player}</h3>
+                  <p className="text-sm text-gray-600 mb-2">{teams[player]?.length || 0} / 4 drafted</p>
+                  <div className="space-y-1">
+                    {teams[player]?.map((contestant, idx) => (
+                      <div key={idx} className="bg-green-100 p-2 rounded text-sm font-medium border border-green-300">
+                        {contestant}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="bg-white p-6 rounded-lg shadow-xl border-4 border-orange-400 mb-6">
+              <h3 className="font-bold text-2xl text-gray-900 mb-4">Available Contestants</h3>
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                {availableContestants.map(name => (
+                  <div key={name} className="border-2 border-gray-300 rounded-lg p-2">
+                    <p className="font-semibold text-gray-900 mb-2 text-sm">{name}</p>
+                    <select
+                      onChange={(e) => {
+                        if (e.target.value) {
+                          handleDraft(e.target.value, name);
+                          e.target.value = '';
+                        }
+                      }}
+                      className="w-full p-1 border rounded text-xs"
+                    >
+                      <option value="">Draft to...</option>
+                      {PLAYER_NAMES.map(player => (
+                        <option key={player} value={player}>{player}</option>
+                      ))}
+                    </select>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="text-center">
+              <button
+                onClick={finishDraft}
+                className="bg-gradient-to-r from-green-600 to-emerald-600 text-white px-8 py-4 rounded-lg text-xl font-bold hover:from-green-700 hover:to-emerald-700 transition shadow-lg"
+              >
+                Finish Draft & Move to Exile Selection
+              </button>
+            </div>
+          </div>
+        );
+      };
+
+      const renderExileSelect = () => {
+        const remainingPlayers = PLAYER_NAMES.filter(p => !exileSelections[p]);
+        
+        if (remainingPlayers.length === 0) {
+          return (
+            <div className="max-w-2xl mx-auto text-center">
+              <div className="bg-white p-8 rounded-lg shadow-2xl border-4 border-purple-600">
+                <h2 className="text-3xl font-bold text-gray-900 mb-4">All Players Have Chosen!</h2>
+                <button
+                  onClick={() => setPhase('complete')}
+                  className="bg-gradient-to-r from-purple-600 to-pink-600 text-white px-8 py-4 rounded-lg text-xl font-bold hover:from-purple-700 hover:to-pink-700 transition shadow-lg"
+                >
+                  View Final Results
+                </button>
+              </div>
+            </div>
+          );
+        }
+
+        return (
+          <div className="max-w-2xl mx-auto text-center">
+            <div className="bg-white p-8 rounded-lg shadow-2xl border-4 border-purple-600">
+              <h2 className="text-3xl font-bold text-gray-900 mb-4">Select Your Player for Exile Choice</h2>
+              <p className="text-lg text-gray-700 mb-6">
+                These players still need to choose their exile tribe:
+              </p>
+              <div className="grid grid-cols-2 gap-4">
+                {remainingPlayers.map(player => (
+                  <button
+                    key={player}
+                    onClick={() => {
+                      setSelectedPlayer(player);
+                      setPhase('exileChoice');
+                    }}
+                    className="bg-gradient-to-r from-purple-500 to-pink-500 text-white px-6 py-4 rounded-lg text-xl font-bold hover:from-purple-600 hover:to-pink-600 transition shadow-lg"
+                  >
+                    {player}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        );
+      };
+
+      const renderExileChoice = () => {
+        const tribe1 = exileTribe.filter((_, i) => i % 2 === 0);
+        const tribe2 = exileTribe.filter((_, i) => i % 2 === 1);
+
+        return (
+          <div className="max-w-4xl mx-auto">
+            <div className="bg-white p-6 rounded-lg shadow-xl mb-6 border-4 border-red-600 text-center">
+              <h2 className="text-3xl font-bold text-gray-900 mb-2">{selectedPlayer}'s Exile Choice</h2>
+              <p className="text-lg text-gray-700">
+                Choose which exile tribe you want to back as your 5th team member
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <button
+                onClick={() => submitExileSelection(0)}
+                className="bg-purple-100 p-6 rounded-lg border-4 border-purple-600 hover:bg-purple-200 transition"
+              >
+                <h3 className="font-bold text-2xl text-purple-900 mb-4">🏝️ Tribe A</h3>
+                <ul className="space-y-2">
+                  {tribe1.map((contestant, idx) => (
+                    <li key={idx} className="text-purple-800 font-medium text-lg bg-purple-200 p-2 rounded">
+                      {contestant}
+                    </li>
+                  ))}
+                </ul>
+              </button>
+
+              <button
+                onClick={() => submitExileSelection(1)}
+                className="bg-teal-100 p-6 rounded-lg border-4 border-teal-600 hover:bg-teal-200 transition"
+              >
+                <h3 className="font-bold text-2xl text-teal-900 mb-4">🏝️ Tribe B</h3>
+                <ul className="space-y-2">
+                  {tribe2.map((contestant, idx) => (
+                    <li key={idx} className="text-teal-800 font-medium text-lg bg-teal-200 p-2 rounded">
+                      {contestant}
+                    </li>
+                  ))}
+                </ul>
+              </button>
+            </div>
+          </div>
+        );
+      };
+
+      const renderComplete = () => {
+        const tribe1 = exileTribe.filter((_, i) => i % 2 === 0);
+        const tribe2 = exileTribe.filter((_, i) => i % 2 === 1);
+        
+        return (
+          <div className="max-w-7xl mx-auto space-y-6">
+            <div className="bg-gradient-to-r from-green-700 to-emerald-700 p-8 rounded-lg shadow-2xl text-center border-4 border-green-900">
+              <Award className="w-24 h-24 mx-auto mb-4 text-yellow-300" />
+              <h1 className="text-5xl font-bold text-white mb-3">THE TRIBE HAS SPOKEN!</h1>
+              <p className="text-green-200 text-xl">Your teams are set. May the best survivor win! 🔥</p>
+            </div>
+
+            <div className="bg-white p-6 rounded-lg shadow-xl border-4 border-orange-600">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-bold text-2xl text-gray-800">
+                  📋 Complete Rankings Breakdown
+                </h3>
+                <button
+                  onClick={downloadRankingsAsPDF}
+                  className="bg-gradient-to-r from-blue-600 to-blue-700 text-white px-6 py-3 rounded-lg font-bold hover:from-blue-700 hover:to-blue-800 transition border-2 border-blue-800 shadow-lg flex items-center gap-2"
+                >
+                  📥 Download Results
+                </button>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b-4 border-orange-600">
+                      <th className="p-3 text-left font-bold text-gray-700 bg-orange-100">Rank</th>
+                      {draftOrder.map((player, idx) => (
+                        <th key={player} className="p-3 text-center font-bold text-gray-700 bg-orange-100">
+                          <div className="flex flex-col items-center">
+                            <div className="w-8 h-8 bg-orange-600 text-white rounded-full flex items-center justify-center font-bold mb-1">
+                              {idx + 1}
+                            </div>
+                            <div>{player}</div>
+                          </div>
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {Array.from({ length: 24 }, (_, i) => i + 1).map(rank => (
+                      <tr key={rank} className="border-b border-gray-200 hover:bg-orange-50">
+                        <td className="p-3 font-bold text-gray-700 bg-orange-50">{rank}</td>
+                        {draftOrder.map(player => {
+                          const contestant = rankings[player][rank];
+                          const isDrafted = teams[player]?.includes(contestant);
+                          const isExiled = exileTribe.includes(contestant);
+                          
+                          return (
+                            <td 
+                              key={player} 
+                              className={`p-3 text-center text-sm font-medium ${
+                                isDrafted ? 'bg-green-100 text-green-800 font-bold' :
+                                isExiled ? 'bg-red-100 text-red-700 font-bold' :
+                                'text-gray-700'
+                              }`}
+                            >
+                              {contestant || '-'}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="mt-4 flex gap-6 text-sm">
+                <div className="flex items-center gap-2">
+                  <div className="w-4 h-4 bg-green-100 border-2 border-green-300 rounded"></div>
+                  <span className="text-gray-700 font-medium">Drafted to team</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-4 h-4 bg-red-100 border-2 border-red-300 rounded"></div>
+                  <span className="text-gray-700 font-medium">Sent to Exile Island</span>
+                </div>
+              </div>
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {PLAYER_NAMES.map(player => (
+                <div key={player} className="bg-white p-6 rounded-lg shadow-xl border-4 border-orange-400">
+                  <h3 className="font-bold text-2xl mb-3 text-gray-900 flex items-center gap-2">
+                    <Flame className="w-6 h-6 text-orange-600" />
+                    {player}
+                  </h3>
+                  <p className="text-sm text-gray-600 mb-3 font-medium">
+                    Challenge Time: {formatTime(challengeTimes[player])}
+                  </p>
+                  <div className="mb-4">
+                    <h4 className="font-semibold text-gray-700 mb-2 text-lg">Main Tribe:</h4>
+                    <ul className="space-y-1 text-sm text-gray-700">
+                      {teams[player]?.map((contestant, idx) => (
+                        <li key={idx} className="font-medium bg-green-100 p-2 rounded border border-green-300">{contestant}</li>
+                      ))}
+                    </ul>
+                  </div>
+                  <div className="border-t-2 border-gray-300 pt-3">
+                    <h4 className="font-semibold text-gray-700 mb-2 text-lg">Exile Tribe:</h4>
+                    <p className="text-base text-purple-700 font-bold bg-purple-100 p-2 rounded">
+                      {exileSelections[player] === 0 ? '🏝️ Tribe A' : '🏝️ Tribe B'}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+            
+            <div className="bg-white p-6 rounded-lg shadow-xl border-4 border-red-600">
+              <h3 className="font-bold text-2xl mb-4 text-gray-800 flex items-center gap-2">
+                <Target className="w-8 h-8 text-red-600" />
+                Exile Island Tribes
+              </h3>
+              <div className="grid grid-cols-2 gap-6">
+                <div className="bg-purple-100 p-4 rounded-lg border-2 border-purple-600">
+                  <h4 className="font-semibold text-purple-900 mb-2 text-lg">Tribe A</h4>
+                  <ul className="space-y-1 text-sm text-purple-800">
+                    {tribe1.map((contestant, idx) => (
+                      <li key={idx} className="font-medium bg-purple-200 p-2 rounded">{contestant}</li>
+                    ))}
+                  </ul>
+                </div>
+                <div className="bg-teal-100 p-4 rounded-lg border-2 border-teal-600">
+                  <h4 className="font-semibold text-teal-900 mb-2 text-lg">Tribe B</h4>
+                  <ul className="space-y-1 text-sm text-teal-800">
+                    {tribe2.map((contestant, idx) => (
+                      <li key={idx} className="font-medium bg-teal-200 p-2 rounded">{contestant}</li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            </div>
+            
+            <div className="bg-red-100 p-6 rounded-lg border-4 border-red-600">
+              <h3 className="font-bold text-xl text-red-900 mb-3">🔥 Want to Start Over?</h3>
+              <p className="text-red-800 mb-3">Enter proctor code to reset the draft:</p>
+              <div className="flex gap-3">
+                <input
+                  type="text"
+                  value={proctorCode}
+                  onChange={(e) => setProctorCode(e.target.value.toUpperCase())}
+                  placeholder="Enter proctor code"
+                  className="flex-1 px-4 py-2 border-2 border-red-400 rounded-lg focus:outline-none focus:border-red-600 font-mono"
+                />
+                <button
+                  onClick={resetDraft}
+                  className="bg-red-600 text-white px-6 py-2 rounded-lg font-bold hover:bg-red-700 transition border-2 border-red-800"
+                >
+                  Reset Draft
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      };
+
+      if (!dataLoaded) {
+        return (
+          <div className="min-h-screen bg-gradient-to-br from-orange-200 via-yellow-100 to-red-200 p-6 flex items-center justify-center">
+            <div className="text-2xl font-bold text-gray-800">Loading draft data...</div>
+          </div>
+        );
+      }
+
+      return (
+        <div className="min-h-screen bg-gradient-to-br from-orange-200 via-yellow-100 to-red-200 p-6">
+          {phase === 'playerSelect' && renderPlayerSelect()}
+          {phase === 'ranking' && renderRanking()}
+          {phase === 'challenge' && renderChallenge()}
+          {phase === 'riskDecision' && renderRiskDecision()}
+          {phase === 'spinning' && renderSpinning()}
+          {phase === 'waiting' && renderWaiting()}
+          {phase === 'rankingsReview' && renderRankingsReview()}
+          {phase === 'draft' && renderDraft()}
+          {phase === 'rewardSwap' && renderRewardSwap()}
+          {phase === 'exileSelect' && renderExileSelect()}
+          {phase === 'exileChoice' && renderExileChoice()}
+          {phase === 'complete' && renderComplete()}
+        </div>
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<SurvivorDraft />);
+  </script>
+</body>
+</html>
