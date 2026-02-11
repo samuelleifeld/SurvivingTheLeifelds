@@ -1,0 +1,9 @@
+# Netlify configuration for Survivor Draft App
+
+[build]
+  publish = "."
+  
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
