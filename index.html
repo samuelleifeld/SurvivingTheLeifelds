@@ -89,10 +89,10 @@
 
     const PLAYER_COLORS = {
       JIM:   { bg: "bg-blue-600",   light: "bg-blue-100",   border: "border-blue-500",   text: "text-blue-700",   badge: "bg-blue-600"   },
-      SANDY: { bg: "bg-amber-600",   light: "bg-amber-100",   border: "border-amber-500",   text: "text-amber-700",   badge: "bg-amber-600"   },
+      SANDY: { bg: "bg-amber-600",  light: "bg-amber-100",  border: "border-amber-500",  text: "text-amber-700",  badge: "bg-amber-600"   },
       LOGAN: { bg: "bg-emerald-600",light: "bg-emerald-100",border: "border-emerald-500",text: "text-emerald-700",badge: "bg-emerald-600" },
       SAM:   { bg: "bg-purple-600", light: "bg-purple-100", border: "border-purple-500", text: "text-purple-700", badge: "bg-purple-600"  },
-      HALEY: { bg: "bg-pink-600",  light: "bg-pink-100",  border: "border-pink-500",  text: "text-pink-700",  badge: "bg-pink-600"   },
+      HALEY: { bg: "bg-pink-500",   light: "bg-pink-100",   border: "border-pink-400",   text: "text-pink-600",   badge: "bg-pink-500"    },
     };
 
     const fmt = s => {
@@ -116,6 +116,9 @@
         exileTribe: [],
         exileSelections: {},       // { PLAYER: 0|1 }
         draftOrder: [],
+        votedOut: [],              // [ { name, position } ] e.g. { name: "Mike White", position: 1 }
+        winner: null,              // contestant name string
+        selectedRewardPlayer: null,
       });
       const [ready, setReady] = useState(false);
 
@@ -124,7 +127,14 @@
         const ref = window._db.ref('draft2');
         ref.on('value', snap => {
           const d = snap.val();
-          if (d) setState(prev => ({ ...prev, ...d, exileTribe: d.exileTribe || [] }));
+          if (d) setState(prev => ({ 
+            ...prev, 
+            ...d, 
+            exileTribe: d.exileTribe || [], 
+            votedOut: d.votedOut || [], 
+            winner: d.winner || null,
+            selectedRewardPlayer: d.selectedRewardPlayer || null
+          }));
           setReady(true);
         });
         return () => ref.off();
@@ -140,11 +150,30 @@
 
       const reset = useCallback(() => {
         const fresh = {
-          phase:'hub', rankings:{}, playerPhase:{}, challengeTimes:{},
-          riskRewards:{}, spinResults:{}, teams:{}, exileTribe:[], exileSelections:{}, draftOrder:[]
+          phase:'hub', 
+          rankings:{}, 
+          playerPhase:{}, 
+          challengeTimes:{},
+          riskRewards:{}, 
+          spinResults:{}, 
+          teams:{}, 
+          exileTribe:[], 
+          exileSelections:{}, 
+          draftOrder:[],
+          selectedRewardPlayer:null, 
+          votedOut:[], 
+          winner:null
         };
         setState(fresh);
-        if (window._db) window._db.ref('draft2').set(fresh);
+        if (window._db) {
+          // Use .set() to completely replace the data, ensuring a clean reset
+          window._db.ref('draft2').set(fresh).then(() => {
+            console.log('Reset successful!');
+          }).catch(err => {
+            console.error('Reset error:', err);
+            alert('Error resetting: ' + err.message);
+          });
+        }
       }, []);
 
       return { state, save, reset, ready };
@@ -922,32 +951,100 @@
     // ─────────────────── COMPLETE SCREEN ───────────────────
     function CompleteScreen({ state, save }) {
       const [code, setCode] = useState('');
+      const [voteInput, setVoteInput] = useState('');
+      const [winnerInput, setWinnerInput] = useState('');
+
       const tribe1 = (state.exileTribe||[]).filter((_,i)=>i%2===0);
       const tribe2 = (state.exileTribe||[]).filter((_,i)=>i%2!==0);
+      const votedOut = state.votedOut || [];
+      const winner = state.winner || null;
+
+      // All contestants that are on any team or exile
+      const allContestants = [
+        ...Object.values(state.teams||{}).flat(),
+        ...(state.exileTribe||[])
+      ];
+      // Survivors still in the game (not voted out, not winner)
+      const votedOutNames = votedOut.map(v=>v.name);
+      const stillIn = allContestants.filter(c => !votedOutNames.includes(c) && c !== winner);
+
+      const ordinal = n => {
+        const s = ['th','st','nd','rd'], v = n%100;
+        return n + (s[(v-20)%10]||s[v]||s[0]);
+      };
+
+      const voteOutContestant = (name) => {
+        const pos = votedOut.length + 1;
+        const newVotedOut = [...votedOut, { name, position: pos }];
+        save({ votedOut: newVotedOut });
+      };
+
+      const undoLastVote = () => {
+        if (votedOut.length === 0) return;
+        const newVotedOut = votedOut.slice(0, -1);
+        save({ votedOut: newVotedOut });
+      };
+
+      const markWinner = (name) => {
+        save({ winner: name });
+      };
+
+      const clearWinner = () => {
+        save({ winner: null });
+      };
+
+      const getVoteInfo = (contestantName) => {
+        return votedOut.find(v => v.name === contestantName) || null;
+      };
 
       const reset = () => {
         if (code !== 'SURVIVOR50') { alert('Wrong code!'); return; }
         if (!confirm('Reset everything?')) return;
         save({
-          phase:'hub', rankings:{}, playerPhase:{}, challengeTimes:{},
-          riskRewards:{}, teams:{}, exileTribe:[], exileSelections:{}, draftOrder:[], selectedRewardPlayer:null
+          phase:'hub', 
+          rankings:{}, 
+          playerPhase:{}, 
+          challengeTimes:{},
+          riskRewards:{}, 
+          spinResults:{},
+          teams:{}, 
+          exileTribe:[], 
+          exileSelections:{}, 
+          draftOrder:[], 
+          selectedRewardPlayer:null, 
+          votedOut:[], 
+          winner:null
         });
+        setCode(''); // Clear the input after reset
       };
 
       return (
         <div className="max-w-7xl mx-auto space-y-6">
-          <div className="bg-gradient-to-r from-green-700 to-emerald-700 rounded-2xl p-10 text-white text-center shadow-2xl">
-            <div className="text-6xl mb-4">🏆</div>
-            <h1 className="text-5xl font-black">THE TRIBE HAS SPOKEN!</h1>
-            <p className="text-green-200 text-xl mt-2">Teams are set. May the best Survivor win! 🔥</p>
-          </div>
 
-          {/* Teams */}
+          {/* Header — changes if there's a winner */}
+          {winner ? (
+            <div className="bg-gradient-to-r from-yellow-500 via-amber-500 to-orange-500 rounded-2xl p-10 text-white text-center shadow-2xl">
+              <div className="text-7xl mb-3">👑</div>
+              <h1 className="text-5xl font-black">SOLE SURVIVOR!</h1>
+              <p className="text-3xl font-bold mt-2 text-yellow-100">{winner}</p>
+              <p className="text-amber-200 text-lg mt-1">has won Survivor 50!</p>
+            </div>
+          ) : (
+            <div className="bg-gradient-to-r from-green-700 to-emerald-700 rounded-2xl p-10 text-white text-center shadow-2xl">
+              <div className="text-6xl mb-4">🏆</div>
+              <h1 className="text-5xl font-black">THE TRIBE HAS SPOKEN!</h1>
+              <p className="text-green-200 text-xl mt-2">Teams are set. May the best Survivor win! 🔥</p>
+            </div>
+          )}
+
+          {/* Teams — with strikethrough for voted out, crown for winner */}
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
             {PLAYER_NAMES.map(p => {
               const col = PLAYER_COLORS[p];
               const rr = state.riskRewards[p];
               const exSel = state.exileSelections[p];
+              const exilePool = exSel === 0 ? tribe1 : tribe2;
+              const allOnTeam = [...(state.teams[p]||[]), ...exilePool];
               return (
                 <div key={p} className={`rounded-2xl border-2 ${col.border} ${col.light} p-5`}>
                   <div className={`font-black text-xl ${col.text} mb-1`}>{p}</div>
@@ -956,17 +1053,120 @@
                   {rr==='reward' &&<div className="text-xs text-green-600 font-bold mb-2">🏆 Had reward</div>}
                   <div className="font-bold text-gray-600 text-xs mb-2">TEAM</div>
                   <div className="space-y-1 mb-3">
-                    {(state.teams[p]||[]).map((c,i)=>(
-                      <div key={i} className={`${col.bg} text-white text-xs px-2 py-1.5 rounded-lg font-medium`}>{c}</div>
-                    ))}
+                    {(state.teams[p]||[]).map((c,i) => {
+                      const vInfo = getVoteInfo(c);
+                      const isWinner = winner === c;
+                      return (
+                        <div key={i} className={`text-xs px-2 py-1.5 rounded-lg font-medium flex items-center justify-between gap-1 ${
+                          isWinner ? 'bg-yellow-400 text-yellow-900' :
+                          vInfo ? 'bg-gray-300 text-gray-500' :
+                          `${col.bg} text-white`
+                        }`}>
+                          <span className={vInfo ? 'line-through' : ''}>{c}</span>
+                          {isWinner && <span className="text-sm">👑</span>}
+                          {vInfo && <span className="text-xs font-bold whitespace-nowrap">{ordinal(vInfo.position)} Out</span>}
+                        </div>
+                      );
+                    })}
                   </div>
                   <div className="font-bold text-gray-600 text-xs mb-1">EXILE PICK</div>
-                  <div className={`text-xs px-2 py-1 rounded font-bold ${exSel===0?'bg-purple-200 text-purple-800':'bg-teal-200 text-teal-800'}`}>
+                  <div className={`text-xs px-2 py-1 rounded font-bold mb-2 ${exSel===0?'bg-purple-200 text-purple-800':'bg-teal-200 text-teal-800'}`}>
                     {exSel===0?'🏝️ Tribe A':'🏝️ Tribe B'}
+                  </div>
+                  {/* Exile tribe members for this player */}
+                  <div className="space-y-1">
+                    {exilePool.map((c,i) => {
+                      const vInfo = getVoteInfo(c);
+                      const isWinner = winner === c;
+                      return (
+                        <div key={i} className={`text-xs px-2 py-1.5 rounded-lg font-medium flex items-center justify-between gap-1 border ${
+                          isWinner ? 'bg-yellow-400 text-yellow-900 border-yellow-500' :
+                          vInfo ? 'bg-gray-200 text-gray-500 border-gray-300' :
+                          exSel===0 ? 'bg-purple-100 text-purple-800 border-purple-300' : 'bg-teal-100 text-teal-800 border-teal-300'
+                        }`}>
+                          <span className={vInfo ? 'line-through' : ''}>{c}</span>
+                          {isWinner && <span>👑</span>}
+                          {vInfo && <span className="text-xs font-bold whitespace-nowrap">{ordinal(vInfo.position)} Out</span>}
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               );
             })}
+          </div>
+
+          {/* 🔥 SNUFFED TORCHES */}
+          <div className="bg-gray-900 rounded-2xl border-2 border-gray-700 p-6">
+            <h3 className="font-black text-2xl text-orange-400 mb-1">🔥 Snuffed Torches</h3>
+            <p className="text-gray-400 text-sm mb-5">Track who has been voted out. Updates team cards above automatically.</p>
+
+            {/* Voted out list */}
+            {votedOut.length > 0 ? (
+              <div className="flex flex-wrap gap-2 mb-5">
+                {votedOut.map((v,i) => (
+                  <div key={i} className="bg-gray-800 border border-gray-600 rounded-xl px-4 py-2 flex items-center gap-2">
+                    <span className="text-orange-400 font-black text-sm">{ordinal(v.position)}</span>
+                    <span className="text-white font-medium text-sm line-through opacity-70">{v.name}</span>
+                    <span className="text-gray-500 text-xs">Out</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-gray-600 text-sm italic mb-5">No one voted out yet...</p>
+            )}
+
+            {/* Vote someone out */}
+            {!winner && stillIn.length > 0 && (
+              <div className="border-t border-gray-700 pt-5">
+                <p className="text-gray-300 font-bold text-sm mb-3">Vote someone out:</p>
+                <div className="flex flex-wrap gap-2 mb-4">
+                  {stillIn.sort().map(name => (
+                    <button key={name} onClick={()=>voteOutContestant(name)}
+                      className="bg-gray-700 hover:bg-red-800 text-white text-xs px-3 py-2 rounded-lg font-medium transition border border-gray-600 hover:border-red-600">
+                      🗳️ {name}
+                    </button>
+                  ))}
+                </div>
+                {votedOut.length > 0 && (
+                  <button onClick={undoLastVote}
+                    className="text-xs text-gray-500 hover:text-gray-300 underline transition">
+                    ↩ Undo last vote ({votedOut[votedOut.length-1]?.name})
+                  </button>
+                )}
+              </div>
+            )}
+
+            {/* Mark winner */}
+            {!winner && stillIn.length > 0 && (
+              <div className="border-t border-gray-700 mt-5 pt-5">
+                <p className="text-gray-300 font-bold text-sm mb-3">👑 Mark the winner:</p>
+                <div className="flex flex-wrap gap-2">
+                  {stillIn.sort().map(name => (
+                    <button key={name} onClick={()=>markWinner(name)}
+                      className="bg-yellow-600 hover:bg-yellow-500 text-white text-xs px-3 py-2 rounded-lg font-bold transition border border-yellow-700 hover:border-yellow-400">
+                      👑 {name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {winner && (
+              <div className="border-t border-gray-700 mt-2 pt-5 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <span className="text-4xl">👑</span>
+                  <div>
+                    <div className="text-yellow-400 font-black text-lg">{winner}</div>
+                    <div className="text-gray-400 text-sm">Sole Survivor</div>
+                  </div>
+                </div>
+                <button onClick={clearWinner}
+                  className="text-xs text-gray-600 hover:text-gray-400 underline transition">
+                  Clear winner
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Exile tribes */}
@@ -975,11 +1175,35 @@
             <div className="grid grid-cols-2 gap-6">
               <div className="bg-purple-50 rounded-xl border-2 border-purple-400 p-4">
                 <h4 className="font-black text-purple-800 mb-3">Tribe A</h4>
-                {tribe1.map((c,i)=><div key={i} className="bg-purple-200 text-purple-900 px-3 py-2 rounded-lg font-medium mb-2 text-sm">{c}</div>)}
+                {tribe1.map((c,i) => {
+                  const vInfo = getVoteInfo(c);
+                  const isWinner = winner === c;
+                  return (
+                    <div key={i} className={`px-3 py-2 rounded-lg font-medium mb-2 text-sm flex items-center justify-between ${
+                      isWinner?'bg-yellow-200 text-yellow-900': vInfo?'bg-gray-200 text-gray-400':'bg-purple-200 text-purple-900'
+                    }`}>
+                      <span className={vInfo?'line-through':''}>{c}</span>
+                      {isWinner && <span>👑</span>}
+                      {vInfo && <span className="text-xs font-bold">{ordinal(vInfo.position)} Out</span>}
+                    </div>
+                  );
+                })}
               </div>
               <div className="bg-teal-50 rounded-xl border-2 border-teal-400 p-4">
                 <h4 className="font-black text-teal-800 mb-3">Tribe B</h4>
-                {tribe2.map((c,i)=><div key={i} className="bg-teal-200 text-teal-900 px-3 py-2 rounded-lg font-medium mb-2 text-sm">{c}</div>)}
+                {tribe2.map((c,i) => {
+                  const vInfo = getVoteInfo(c);
+                  const isWinner = winner === c;
+                  return (
+                    <div key={i} className={`px-3 py-2 rounded-lg font-medium mb-2 text-sm flex items-center justify-between ${
+                      isWinner?'bg-yellow-200 text-yellow-900': vInfo?'bg-gray-200 text-gray-400':'bg-teal-200 text-teal-900'
+                    }`}>
+                      <span className={vInfo?'line-through':''}>{c}</span>
+                      {isWinner && <span>👑</span>}
+                      {vInfo && <span className="text-xs font-bold">{ordinal(vInfo.position)} Out</span>}
+                    </div>
+                  );
+                })}
               </div>
             </div>
           </div>
@@ -1011,9 +1235,19 @@
                       const c = state.rankings[p]?.[rank];
                       const isT = state.teams[p]?.includes(c);
                       const isE = (state.exileTribe||[]).includes(c);
+                      const vInfo = c ? getVoteInfo(c) : null;
+                      const isWinner = winner === c;
                       return (
-                        <td key={p} className={`p-1.5 text-center ${isT?'bg-green-50 font-bold text-green-800':isE?'bg-red-50 text-red-600':''}`}>
-                          {c||'—'}
+                        <td key={p} className={`p-1.5 text-center ${
+                          isWinner ? 'bg-yellow-50 font-bold text-yellow-700' :
+                          vInfo ? 'bg-gray-50 text-gray-400' :
+                          isT?'bg-green-50 font-bold text-green-800':
+                          isE?'bg-red-50 text-red-600':''}`}>
+                          <span className={vInfo?'line-through':''}>
+                            {c||'—'}
+                          </span>
+                          {isWinner && ' 👑'}
+                          {vInfo && <div className="text-xs text-gray-400">{ordinal(vInfo.position)} Out</div>}
                         </td>
                       );
                     })}
@@ -1023,12 +1257,12 @@
             </table>
           </div>
 
-          {/* Reset */}
+          {/* Reset — no code hint */}
           <div className="bg-red-50 rounded-2xl border-2 border-red-300 p-6">
             <h3 className="font-black text-red-800 mb-3">🔥 Reset Draft</h3>
             <div className="flex gap-3">
               <input value={code} onChange={e=>setCode(e.target.value.toUpperCase())}
-                placeholder="Enter proctor code (SURVIVOR50)"
+                placeholder="Enter proctor code"
                 className="flex-1 px-4 py-2 border-2 border-red-300 rounded-xl focus:outline-none focus:border-red-500 font-mono"/>
               <button onClick={reset} className="bg-red-600 text-white px-6 py-2 rounded-xl font-bold hover:bg-red-700 border-2 border-red-800">Reset</button>
             </div>
